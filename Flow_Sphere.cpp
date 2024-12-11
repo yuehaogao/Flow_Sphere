@@ -93,7 +93,7 @@ const int NUM_FLOWERS = 2;                   // How many flowers are there, mean
 const int NUM_CHANNELS = 24;                 // How many EEG channels are there for one participant
 const int NUM_SHADOWS = 8;                   // How many lines (hot and shadows) are there for each channel
 const int WAVE_BUFFER_LENGTH = 600;          // The length of the buffer storing the wave values
-const float DENSITY = 0.8;                   // How dense the samples are on each channel
+const float DENSITY = 0.35;                  // How dense the samples are on each channel
 const float MIN_FREQUENCY = 4.0;             // Lower limit of mock EEG frequency range
 const float MAX_FREQUENCY = 30.0;            // Upper limit of mock EEG frequency range
 const float REFRESH_ANGLE = PI * 0.5;        // The refreshing point in the circle
@@ -104,6 +104,7 @@ const float CHANNEL_DISTANCE = 10.0 / NUM_CHANNELS;
                                              // ** CHANGE TO VARIABLE LATER
 const float OSC_AMP = CHANNEL_DISTANCE;      // The oscilation amplitude of each channel
                                              // ** CHANGE TO VARIABLE LATER
+const float OSC_FACTOR = 0.05;                // A constant deciding the oscillation amplitude
 const float BASE_RADIUS = CENTRAL_RADIUS - (0.5 * CHANNEL_DISTANCE * NUM_FLOWERS);               
                                              // The radius of the inner-most channel
 const float FLOWER_DIST = 50.0;              // The distance of each flower mesh to the origin
@@ -354,7 +355,6 @@ public:
           Flowers.color(initialRed);
         }
 
-
         // Initialize the backend "latest" values to 0.0
         oneFlowerLatestValues.push_back(0.0);
         oneFlowerAllShownValues.push_back(oneChannelAllShownValues);
@@ -452,17 +452,112 @@ public:
       state().pose = nav();
       Flowers.primitive(Mesh::LINES);
 
-      vector<float> signal1LatestValues = Mock_Signal_1.getLatestValues();
-      vector<float> signal2LatestValues = Mock_Signal_2.getLatestValues();
-
-
-
-      // for () {
-
-      // }
-
-      //Flowers.vertices().clear();
+      // Clear the positions and colors from the previous frame
+      Flowers.vertices().clear();
+      HSV initialRed = HSV(0.0f, 1.0f, 0.7f);
       // Flowers.colors().clear();
+
+      // First, let the classes upgrade the latest value of the mock EEGs
+      vector<float> signal0LatestValues = Mock_Signal_1.getLatestValues();
+      flowersLatestValues[0] = signal0LatestValues;
+      vector<float> signal1LatestValues = Mock_Signal_2.getLatestValues();
+      flowersLatestValues[1] = signal1LatestValues;
+      
+      // Second, loop and push-forward the "all-shown" values for each flower
+      // Meanwhile calculate the new position of each sample
+      for (int flowerIndex = 0; flowerIndex < NUM_FLOWERS; flowerIndex++) {
+        for (int channelIndex = 0; channelIndex < NUM_CHANNELS; channelIndex++) {
+          // Update the values in this cahnnel
+          vector<float> channelValues = flowersAllShownValues[flowerIndex][channelIndex];
+          int channelNumValues = channelValues.size();
+          for (int sampleIndex = channelNumValues - 1; sampleIndex >= 0; sampleIndex--) {
+            if (sampleIndex > 0) {
+              channelValues[sampleIndex] = channelValues[sampleIndex - 1];
+            } else {
+              if (flowerIndex == 0) {
+                channelValues[sampleIndex] = signal0LatestValues[channelIndex];
+              } else if (flowerIndex == 1) {
+                channelValues[sampleIndex] = signal1LatestValues[channelIndex];
+              }
+            }
+          }
+          flowersAllShownValues[flowerIndex][channelIndex] = channelValues;
+
+          // Update the positions in the channel
+          vector<Vec3f> channelPositions;
+          float channelRadius = BASE_RADIUS + channelIndex * CHANNEL_DISTANCE;
+          float channelAngleStep = (2.0 * PI) / float(channelNumValues);
+          
+          for (int sampleIndex = 0; sampleIndex < channelNumValues - 1; sampleIndex++) {
+            float sampleAngle = REFRESH_ANGLE + sampleIndex * channelAngleStep;
+            float sampleX, sampleY, sampleZ;
+            float sampleValue = flowersAllShownValues[flowerIndex][channelIndex][sampleIndex];
+            float oscillationAmp = CHANNEL_DISTANCE;
+            
+
+            if (flowerIndex == 0) {
+              sampleX = channelRadius * cos(sampleAngle) * (1.0 + sampleValue * OSC_AMP * OSC_FACTOR);
+              sampleY = channelRadius * sin(sampleAngle) * (1.0 + sampleValue * OSC_AMP * OSC_FACTOR);
+              sampleZ = -1 * FLOWER_DIST;
+            } else if (flowerIndex == 1) {
+              sampleX = channelRadius * cos(sampleAngle) * (1.0 + sampleValue * OSC_AMP * OSC_FACTOR) + 20;
+              sampleY = channelRadius * sin(sampleAngle) * (1.0 + sampleValue * OSC_AMP * OSC_FACTOR);
+              sampleZ = -1 * FLOWER_DIST;
+            } 
+
+            if (frameCount <= 5) {
+              cout << sampleValue << endl;
+            }
+
+            Vec3f samplePos = Vec3f(sampleX, sampleY, sampleZ);
+            state().flowersRealTimePositions[flowerIndex][channelIndex][sampleIndex] = samplePos;
+          }
+
+          // Third, update each flowers' positions and colors
+          for (int sampleIndex = 0; sampleIndex < channelNumValues; sampleIndex++) {
+            Vec3f newStartingPos;
+            Vec3f newEndingPos;
+
+            if (sampleIndex < channelNumValues - 1) {
+              newStartingPos = state().flowersRealTimePositions[flowerIndex][channelIndex][sampleIndex];
+              newEndingPos = state().flowersRealTimePositions[flowerIndex][channelIndex][sampleIndex + 1];
+            } else {
+              newStartingPos = state().flowersRealTimePositions[flowerIndex][channelIndex][sampleIndex];
+              newEndingPos = state().flowersRealTimePositions[flowerIndex][channelIndex][0];
+            }
+
+            Flowers.vertex(newStartingPos);
+            Flowers.color(initialRed);
+            Flowers.vertex(newEndingPos);
+            Flowers.color(initialRed);
+          }
+        }
+      }
+
+      // Third, update each flowers' positions and colors
+      // Flowers.vertices().clear();
+      // // Flowers.colors().clear();
+      // for (int flowerIndex = 0; flowerIndex < NUM_FLOWERS; flowerIndex++) {
+      //   for (int channelIndex = 0; channelIndex < NUM_CHANNELS; channelIndex++) {
+      //     for (int sampleIndex = 0; sampleIndex < channelNumValues; sampleIndex++) {
+      //       Vec3f startingPos;
+      //       Vec3f endingPos;
+
+      //       if (sampleIndex < channelNumValues - 1) {
+      //         startingPos = state().flowersRealTimePositions[flowerIndex][channelIndex][sampleIndex];
+      //         endingPos = state().flowersRealTimePositions[flowerIndex][channelIndex][sampleIndex + 1];
+      //       } else {
+      //         startingPos = state().flowersRealTimePositions[flowerIndex][channelIndex][sampleIndex];
+      //         endingPos = state().flowersRealTimePositions[flowerIndex][channelIndex][0];
+      //      }
+
+      //       Flowers.vertex(startingPos);
+      //       Flowers.color(initialRed);
+      //       Flowers.vertex(endingPos);
+      //       Flowers.color(initialRed);
+      //     }
+      //   }
+      // }
       
       // ------- EXECUTE THE REFRESHING WORKS HERE -------
 
