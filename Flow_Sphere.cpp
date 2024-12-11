@@ -92,8 +92,8 @@ using namespace std;
 const int NUM_FLOWERS = 2;                   // How many flowers are there, meaning how many participants are observed
 const int NUM_CHANNELS = 24;                 // How many EEG channels are there for one participant
 const int NUM_SHADOWS = 8;                   // How many lines (hot and shadows) are there for each channel
-const int WAVE_BUFFER_LENGTH = 2000;         // The length of the buffer storing the wave values
-const float DENSITY = 1.0;                   // How dense the samples are on each channel
+const int WAVE_BUFFER_LENGTH = 600;          // The length of the buffer storing the wave values
+const float DENSITY = 0.8;                   // How dense the samples are on each channel
 const float MIN_FREQUENCY = 4.0;             // Lower limit of mock EEG frequency range
 const float MAX_FREQUENCY = 30.0;            // Upper limit of mock EEG frequency range
 const float REFRESH_ANGLE = PI * 0.5;        // The refreshing point in the circle
@@ -112,7 +112,6 @@ const float FLOWER_DIST = 50.0;              // The distance of each flower mesh
 // const float INTERVAL = 1.0 / 60.0; // 1/60 second
 // const int NUM_SAMPLES_INNER = 300;
 // const int DURATION = 6; 
-
 
 
 // This example shows how to use SynthVoice and SynthManagerto create an audio
@@ -222,7 +221,7 @@ struct CommonState {
   float channelDistance;
   float oscillationAmp;
 
-  // Flower 1
+  // Flowers' Colors and Line Locations
   HSV flowersRealTimeColors[NUM_FLOWERS][NUM_CHANNELS];
   Vec3f flowersRealTimePositions[NUM_FLOWERS][NUM_CHANNELS][WAVE_BUFFER_LENGTH];
 };
@@ -249,10 +248,8 @@ public:
   int frameCount;
 
   // --------- EEG VALUES ARCHIVE ----------
-
-  // ****** CHANGE THIS LATER TO MULTI-CHANNEL VERSION
-  Mock_EEG EEG_Flowers = Mock_EEG(NUM_CHANNELS, MIN_FREQUENCY, MAX_FREQUENCY);
-
+  Mock_EEG Mock_Signal_1 = Mock_EEG(NUM_CHANNELS, MIN_FREQUENCY, MAX_FREQUENCY);
+  Mock_EEG Mock_Signal_2 = Mock_EEG(NUM_CHANNELS, MIN_FREQUENCY, MAX_FREQUENCY);
 
   vector<vector<float>> flowersLatestValues;
   vector<vector<vector<float>>> flowersAllShownValues;
@@ -260,9 +257,9 @@ public:
   // --------- FLOWER TOPOLOGICAL ----------
   Mesh Flowers;
   
-  // ** SAVE FOR LATER
+  // ** SAVED FOR LATER
   // List of triggered MIDI Notes
-  //vector<int> MIDINoteTriggeredLastTime;
+  // vector<int> MIDINoteTriggeredLastTime;
 
   // STFT variables
   gam::STFT stft = gam::STFT(FFT_SIZE, FFT_SIZE / 4, 0, gam::HANN, gam::MAG_FREQ);
@@ -292,20 +289,17 @@ public:
     state().channelDistance = CHANNEL_DISTANCE;
     state().oscillationAmp = OSC_AMP;
 
-    // For each flower (participant):
-    // For each channel in Flowers:
-    // Initialize the colors and vertices
+    // First, handle the backend values by setting them to 0.0
+    // ****** FOR EACH PARTICIPANT (FLOWER): ******
     for (int flowerIndex = 0; flowerIndex < NUM_FLOWERS; flowerIndex++) {
       vector<float> oneFlowerLatestValues;
       vector<vector<float>> oneFlowerAllShownValues;
 
+      // ****** FOR EACH EEG CHANNEL IN A FLOWER: ******
       for (int channelIndex = 0; channelIndex < NUM_CHANNELS; channelIndex++) {
         // Initialize to red
         HSV initialRed = HSV(0.0f, 1.0f, 0.7f);
         state().flowersRealTimeColors[flowerIndex][channelIndex] = initialRed;
-
-        // Initialize the backend "latest" values to 0.0
-        oneFlowerLatestValues.push_back(0.0);
 
         // The standard radius of this channel
         float channelRadius = BASE_RADIUS + channelIndex * CHANNEL_DISTANCE;
@@ -316,6 +310,7 @@ public:
         float channelAngleStep = (2.0 * PI) / float(channelNumSamples);
         vector<float> oneChannelAllShownValues;
 
+        // ****** FOR EACH SAMPLE IN A CHANNEL: ******
         for (int sampleIndex = 0; sampleIndex < channelNumSamples; sampleIndex++) {
           // Initialize the backend "all-shown" values to 0.0
           oneChannelAllShownValues.push_back(0.0);
@@ -329,15 +324,17 @@ public:
             sampleY = channelRadius * sin(sampleAngle);
             sampleZ = -1 * FLOWER_DIST;
           } else if (flowerIndex == 1) {
-            sampleX = channelRadius * cos(sampleAngle);
+            sampleX = channelRadius * cos(sampleAngle) + 20;
             sampleY = channelRadius * sin(sampleAngle);
-            sampleZ = 1 * FLOWER_DIST;
+            sampleZ = -1 * FLOWER_DIST;
           } 
 
           Vec3f samplePos = Vec3f(sampleX, sampleY, sampleZ);
           state().flowersRealTimePositions[flowerIndex][channelIndex][sampleIndex] = samplePos;
         }
 
+        // Then, draw the corresponding lines according to the initialized values
+        // Their initial positions should place them into circles
         vector<Vec3f> channelAllPositions;
         for (int sampleIndex = 0; sampleIndex < channelNumSamples; sampleIndex++) {
           Vec3f startingPos;
@@ -357,15 +354,15 @@ public:
           Flowers.color(initialRed);
         }
 
+
+        // Initialize the backend "latest" values to 0.0
+        oneFlowerLatestValues.push_back(0.0);
         oneFlowerAllShownValues.push_back(oneChannelAllShownValues);
       }
 
       flowersLatestValues.push_back(oneFlowerLatestValues);
       flowersAllShownValues.push_back(oneFlowerAllShownValues);
     }
-
-
-    // ------------------------------------------------------------
 
     navControl().active(false); // Disable navigation via keyboard, since we
                                 // will be using keyboard for note triggering
@@ -420,6 +417,7 @@ public:
     }
   }
 
+
   // --------------------------------------------------------
   // onSound
   // The audio callback function. Called when audio hardware requires data
@@ -447,13 +445,17 @@ public:
   void onAnimate(double dt) override
   {
     // The GUI is prepared here
-    imguiBeginFrame();
+    imguiBeginFrame();  // ?? put it in "isPrimary" or right here?
     frameCount += 1;
 
     if (isPrimary()) {
       state().pose = nav();
-
       Flowers.primitive(Mesh::LINES);
+
+      vector<float> signal1LatestValues = Mock_Signal_1.getLatestValues();
+      vector<float> signal2LatestValues = Mock_Signal_2.getLatestValues();
+
+
 
       // for () {
 
