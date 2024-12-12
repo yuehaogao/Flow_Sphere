@@ -89,26 +89,25 @@ using namespace std;
 #define FFT_SIZE 4048
 #define PI 3.1415926535
 
-const int NUM_FLOWERS = 2;                   // How many flowers are there, meaning how many participants are observed
-const int NUM_CHANNELS = 24;                 // How many EEG channels are there for one participant
-const int NUM_SHADOWS = 8;                   // How many lines (hot and shadows) are there for each channel
-const int WAVE_BUFFER_LENGTH = 600;          // The length of the buffer storing the wave values
-const float DENSITY = 0.35;                  // How dense the samples are on each channel
-const float MIN_FREQUENCY = 4.0;             // Lower limit of mock EEG frequency range
-const float MAX_FREQUENCY = 30.0;            // Upper limit of mock EEG frequency range
-const float REFRESH_ANGLE = PI * 0.5;        // The refreshing point in the circle
-                                             // ** CHANGE TO VARIABLE LATER
-const float CENTRAL_RADIUS = 6.0;            // The radius of the middle channel of each EEG Flower Mesh
+const int NUM_FLOWERS = 2;                        // How many flowers are there, meaning how many participants are observed
+const int NUM_CHANNELS = 12;                      // How many EEG channels are there for one participant
+const int NUM_SHADOWS = 8;                        // How many lines (hot and shadows) are there for each channel
+const int WAVE_BUFFER_LENGTH = 600;               // The length of the buffer storing the wave values
+const float DENSITY = 0.2;                        // How dense the samples are on each channel
+const float MIN_FREQUENCY = 4.0;                  // Lower limit of mock EEG frequency range
+const float MAX_FREQUENCY = 30.0;                 // Upper limit of mock EEG frequency range
+const float REFRESH_ANGLE = PI * -0.5;            // The refreshing point in the circle
+                                                  // ** CHANGE TO VARIABLE LATER
+const float CENTRAL_RADIUS = 6.0;                 // The radius of the middle channel of each EEG Flower Mesh
 const float CHANNEL_DISTANCE = 10.0 / NUM_CHANNELS;          
-                                             // The distance between each channel
-                                             // ** CHANGE TO VARIABLE LATER
-const float OSC_AMP = CHANNEL_DISTANCE;      // The oscilation amplitude of each channel
-                                             // ** CHANGE TO VARIABLE LATER
-const float OSC_FACTOR = 0.05;                // A constant deciding the oscillation amplitude
+                                                  // The distance between each channel
+                                                  // ** CHANGE TO VARIABLE LATER
+const float OSC_AMP = 0.6 * CHANNEL_DISTANCE;     // The oscilation amplitude of each channel
+                                                  // ** CHANGE TO VARIABLE LATER
 const float BASE_RADIUS = CENTRAL_RADIUS - (0.5 * CHANNEL_DISTANCE * NUM_FLOWERS);               
-                                             // The radius of the inner-most channel
-const float FLOWER_DIST = 50.0;              // The distance of each flower mesh to the origin
-                                             // ** CHANGE TO VARIABLE LATER
+                                                  // The radius of the inner-most channel
+const float FLOWER_DIST = 50.0;                   // The distance of each flower mesh to the origin
+                                                  // ** CHANGE TO VARIABLE LATER
 
 // const float INTERVAL = 1.0 / 60.0; // 1/60 second
 // const int NUM_SAMPLES_INNER = 300;
@@ -325,7 +324,7 @@ public:
             sampleY = channelRadius * sin(sampleAngle);
             sampleZ = -1 * FLOWER_DIST;
           } else if (flowerIndex == 1) {
-            sampleX = channelRadius * cos(sampleAngle) + 20;
+            sampleX = channelRadius * cos(sampleAngle) + 30;
             sampleY = channelRadius * sin(sampleAngle);
             sampleZ = -1 * FLOWER_DIST;
           } 
@@ -496,12 +495,12 @@ public:
             
 
             if (flowerIndex == 0) {
-              sampleX = channelRadius * cos(sampleAngle) * (1.0 + sampleValue * OSC_AMP * OSC_FACTOR);
-              sampleY = channelRadius * sin(sampleAngle) * (1.0 + sampleValue * OSC_AMP * OSC_FACTOR);
+              sampleX = (channelRadius + (sampleValue * OSC_AMP)) * cos(sampleAngle);
+              sampleY = (channelRadius + (sampleValue * OSC_AMP)) * sin(sampleAngle);
               sampleZ = -1 * FLOWER_DIST;
             } else if (flowerIndex == 1) {
-              sampleX = channelRadius * cos(sampleAngle) * (1.0 + sampleValue * OSC_AMP * OSC_FACTOR) + 20;
-              sampleY = channelRadius * sin(sampleAngle) * (1.0 + sampleValue * OSC_AMP * OSC_FACTOR);
+              sampleX = (channelRadius + (sampleValue * OSC_AMP)) * cos(sampleAngle) + 30;
+              sampleY = (channelRadius + (sampleValue * OSC_AMP)) * sin(sampleAngle);
               sampleZ = -1 * FLOWER_DIST;
             } 
 
