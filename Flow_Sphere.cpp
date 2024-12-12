@@ -251,8 +251,8 @@ public:
   int frameCount;
 
   // --------- EEG VALUES ARCHIVE ----------
-  Mock_EEG Mock_Signal_0 = Mock_EEG(NUM_CHANNELS, MIN_FREQUENCY + 1, MAX_FREQUENCY - 6);
-  Mock_EEG Mock_Signal_1 = Mock_EEG(NUM_CHANNELS, MIN_FREQUENCY + 2, MAX_FREQUENCY - 5);
+  Mock_EEG Mock_Signal_0 = Mock_EEG(NUM_CHANNELS, MIN_FREQUENCY, MAX_FREQUENCY);
+  Mock_EEG Mock_Signal_1 = Mock_EEG(NUM_CHANNELS, MIN_FREQUENCY + 6, MAX_FREQUENCY - 4);
 
   vector<vector<float>> flowersLatestValues;
   vector<vector<vector<float>>> flowersAllShownValues;
@@ -507,13 +507,13 @@ public:
       signal1LatestFrequencies = Mock_Signal_1.getLatestFrequencies();
       vector<HSV> signal0LatestColors, signal1LatestColors;
       for (int channelIndex = 0; channelIndex < NUM_CHANNELS; channelIndex++) {
-        float signal0ChannelFreqIndex = (signal0LatestFrequencies[channelIndex] - MIN_FREQUENCY) / (MAX_FREQUENCY - MIN_FREQUENCY);
+        float signal0ChannelFreqIndex = (pow(signal0LatestFrequencies[channelIndex], 2) - pow(MIN_FREQUENCY, 2)) / (pow(MAX_FREQUENCY, 2) - pow(MIN_FREQUENCY, 2));
         float signal0ChannelNewHue = MAX_HUE * signal0ChannelFreqIndex;
         float signal0ChannelNewBrightness = MIN_BRIGHNESS + (1.0 - MIN_BRIGHNESS) * signal0ChannelFreqIndex;
         HSV signal0ChannelNewColor = HSV(signal0ChannelNewHue, 1.0, signal0ChannelNewBrightness);
         signal0LatestColors.push_back(signal0ChannelNewColor);
 
-        float signal1ChannelFreqIndex = (signal1LatestFrequencies[channelIndex] - MIN_FREQUENCY) / (MAX_FREQUENCY - MIN_FREQUENCY);
+        float signal1ChannelFreqIndex = (pow(signal1LatestFrequencies[channelIndex], 2) - pow(MIN_FREQUENCY, 2)) / (pow(MAX_FREQUENCY, 2) - pow(MIN_FREQUENCY, 2));
         float signal1ChannelNewHue = MAX_HUE * signal1ChannelFreqIndex;
         float signal1ChannelNewBrightness = MIN_BRIGHNESS + (1.0 - MIN_BRIGHNESS) * signal1ChannelFreqIndex;
         HSV signal1ChannelNewColor = HSV(signal1ChannelNewHue, 1.0, signal1ChannelNewBrightness);
@@ -537,7 +537,6 @@ public:
           }
         }
       }
- 
 
 
       //flowersLatestFrequencies[0] = signal0LatestFrequencies;
@@ -558,9 +557,9 @@ public:
               if (flowerIndex == 0) {
                 channelValues[sampleIndex] = signal0LatestValues[channelIndex];
               } else if (flowerIndex == 1) {
-                if (frameCount < 3) {
-                  cout << "THIS PART IS REACHED" << endl;
-                }
+                // if (frameCount < 3) {
+                //   cout << "THIS PART IS REACHED" << endl;
+                // }
                 channelValues[sampleIndex] = signal1LatestValues[channelIndex];
               }
             }
