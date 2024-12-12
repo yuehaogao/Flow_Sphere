@@ -5,8 +5,8 @@
 // https://www.media.mit.edu/projects/flower-eeg-visualization-with-the-aid-of-machine-learning/overview/
 
 
-// 3:55PM
-// LAST VERSION BEFORE THE MAJOR CHANGE TO MULTI-FLOWER IN ONE MESH
+// 11:55PM
+// ** CHANGE LATER TO: BRIGHTEST MEANING A FLOW RATHER THAN HIGH FREQ
 
 /*
  * Purpose:
@@ -102,14 +102,15 @@ const float CENTRAL_RADIUS = 6.0;                 // The radius of the middle ch
 const float CHANNEL_DISTANCE = 10.0 / NUM_CHANNELS;          
                                                   // The distance between each channel
                                                   // ** CHANGE TO VARIABLE LATER
-const float OSC_AMP = 0.6 * CHANNEL_DISTANCE;     // The oscilation amplitude of each channel
+const float OSC_AMP = 0.9 * CHANNEL_DISTANCE;     // The oscilation amplitude of each channel
                                                   // ** CHANGE TO VARIABLE LATER
 const float BASE_RADIUS = CENTRAL_RADIUS - (0.5 * CHANNEL_DISTANCE * NUM_FLOWERS);               
                                                   // The radius of the inner-most channel
-const float FLOWER_DIST = 50.0;                   // The distance of each flower mesh to the origin
+const float FLOWER_DIST = 70.0;                   // The distance of each flower mesh to the origin
                                                   // ** CHANGE TO VARIABLE LATER
-const float MAX_HUE = 0.75;
-const float MIN_BRIGHNESS = 0.5;
+const float MAX_HUE = 0.5;
+const float MIN_BRIGHNESS = 0.3;
+const float FLOWER_DYNAMIC = 0.005;
 
 // const float INTERVAL = 1.0 / 60.0; // 1/60 second
 
@@ -252,7 +253,7 @@ public:
 
   // --------- EEG VALUES ARCHIVE ----------
   Mock_EEG Mock_Signal_0 = Mock_EEG(NUM_CHANNELS, MIN_FREQUENCY, MAX_FREQUENCY);
-  Mock_EEG Mock_Signal_1 = Mock_EEG(NUM_CHANNELS, MIN_FREQUENCY + 6, MAX_FREQUENCY - 4);
+  Mock_EEG Mock_Signal_1 = Mock_EEG(NUM_CHANNELS, MIN_FREQUENCY + 6, MAX_FREQUENCY - 0.5);
 
   vector<vector<float>> flowersLatestValues;
   vector<vector<vector<float>>> flowersAllShownValues;
@@ -332,11 +333,11 @@ public:
           if (flowerIndex == 0) {
             sampleX = channelRadius * cos(sampleAngle);
             sampleY = channelRadius * sin(sampleAngle);
-            sampleZ = -1 * FLOWER_DIST;
+            sampleZ = -1 * FLOWER_DIST * (1.0 - FLOWER_DYNAMIC * channelIndex);
           } else if (flowerIndex == 1) {
             sampleX = channelRadius * cos(sampleAngle) + 30;
             sampleY = channelRadius * sin(sampleAngle);
-            sampleZ = -1 * FLOWER_DIST;
+            sampleZ = -1 * FLOWER_DIST * (1.0 - FLOWER_DYNAMIC * channelIndex);
           } 
 
           Vec3f samplePos = Vec3f(sampleX, sampleY, sampleZ);
@@ -508,13 +509,13 @@ public:
       vector<HSV> signal0LatestColors, signal1LatestColors;
       for (int channelIndex = 0; channelIndex < NUM_CHANNELS; channelIndex++) {
         float signal0ChannelFreqIndex = (pow(signal0LatestFrequencies[channelIndex], 2) - pow(MIN_FREQUENCY, 2)) / (pow(MAX_FREQUENCY, 2) - pow(MIN_FREQUENCY, 2));
-        float signal0ChannelNewHue = MAX_HUE * signal0ChannelFreqIndex;
+        float signal0ChannelNewHue = 1.0 - (MAX_HUE * signal0ChannelFreqIndex);
         float signal0ChannelNewBrightness = MIN_BRIGHNESS + (1.0 - MIN_BRIGHNESS) * signal0ChannelFreqIndex;
         HSV signal0ChannelNewColor = HSV(signal0ChannelNewHue, 1.0, signal0ChannelNewBrightness);
         signal0LatestColors.push_back(signal0ChannelNewColor);
 
         float signal1ChannelFreqIndex = (pow(signal1LatestFrequencies[channelIndex], 2) - pow(MIN_FREQUENCY, 2)) / (pow(MAX_FREQUENCY, 2) - pow(MIN_FREQUENCY, 2));
-        float signal1ChannelNewHue = MAX_HUE * signal1ChannelFreqIndex;
+        float signal1ChannelNewHue = 1.0 - (MAX_HUE * signal1ChannelFreqIndex);
         float signal1ChannelNewBrightness = MIN_BRIGHNESS + (1.0 - MIN_BRIGHNESS) * signal1ChannelFreqIndex;
         HSV signal1ChannelNewColor = HSV(signal1ChannelNewHue, 1.0, signal1ChannelNewBrightness);
         signal1LatestColors.push_back(signal1ChannelNewColor);
@@ -581,12 +582,12 @@ public:
             if (flowerIndex == 0) {
               sampleX = (channelRadius + (sampleValue * state().oscillationAmp)) * cos(sampleAngle);
               sampleY = (channelRadius + (sampleValue * state().oscillationAmp)) * sin(sampleAngle);
-              sampleZ = -1 * FLOWER_DIST;
+              sampleZ = -1 * FLOWER_DIST * (1.0 - FLOWER_DYNAMIC * channelIndex);
             } 
             if (flowerIndex == 1) {
               sampleX = (channelRadius + (sampleValue * state().oscillationAmp)) * cos(sampleAngle) + 30;
               sampleY = (channelRadius + (sampleValue * state().oscillationAmp)) * sin(sampleAngle);
-              sampleZ = -1 * FLOWER_DIST;
+              sampleZ = -1 * FLOWER_DIST * (1.0 - FLOWER_DYNAMIC * channelIndex);
             } 
 
             Vec3f samplePos = Vec3f(sampleX, sampleY, sampleZ);
