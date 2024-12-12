@@ -251,15 +251,12 @@ public:
   int frameCount;
 
   // --------- EEG VALUES ARCHIVE ----------
-  Mock_EEG Mock_Signal_1 = Mock_EEG(NUM_CHANNELS, MIN_FREQUENCY, MAX_FREQUENCY);
-  Mock_EEG Mock_Signal_2 = Mock_EEG(NUM_CHANNELS, MIN_FREQUENCY, MAX_FREQUENCY);
+  Mock_EEG Mock_Signal_0 = Mock_EEG(NUM_CHANNELS, MIN_FREQUENCY + 1, MAX_FREQUENCY - 6);
+  Mock_EEG Mock_Signal_1 = Mock_EEG(NUM_CHANNELS, MIN_FREQUENCY + 2, MAX_FREQUENCY - 5);
 
   vector<vector<float>> flowersLatestValues;
   vector<vector<vector<float>>> flowersAllShownValues;
-  //vector<vector<float>> flowersLatestFrequencies;
-  //vector<vector<HSV>> flowersLatestColors;
-  //vector<vector<vector<HSV>>> flowersAllShownColors;
-  
+
   // --------- FLOWER TOPOLOGICAL ----------
   Mesh Flowers;
   
@@ -480,23 +477,34 @@ public:
       // vector<float> signal0LatestValues, signal1LatestValues, signal2LatestValues, signal3LatestValues, signal4LatestValues, signal5LatestValues, signal6LatestValues, signal7LatestValues;
       vector<float> signal0LatestValues, signal1LatestValues, signal2LatestValues;
       if (NUM_FLOWERS >= 1) {
-        signal0LatestValues = Mock_Signal_1.getLatestValues();
+        signal0LatestValues = Mock_Signal_0.getLatestValues();
         flowersLatestValues[0] = signal0LatestValues;
       } 
       if (NUM_FLOWERS >= 2) {
-        signal1LatestValues = Mock_Signal_2.getLatestValues();
+        signal1LatestValues = Mock_Signal_1.getLatestValues();
         flowersLatestValues[1] = signal1LatestValues;
       }
-      if (NUM_FLOWERS >= 3) {
+
+      // int allTheSame = 0;
+      // for (int i = 0; i < signal0LatestValues.size() - 1; i++) {
+      //   if (signal0LatestValues[i] == signal1LatestValues[i]) {
+      //     cout << "Same" << endl;
+      //   } else {
+      //     cout << "Different" << endl;
+      //   }
+      // }
+
+
+      //if (NUM_FLOWERS >= 3) {
         // cout << "This part is entered, which is not supposed to" << endl;
         // signal2LatestValues = Mock_Signal_3.getLatestValues();
         // flowersLatestValues[2] = signal2LatestValues;
-      } else { }
+      //} else { }
 
       // Get the latest colors
       vector<float> signal0LatestFrequencies, signal1LatestFrequencies, signal2LatestFrequencies, signal3LatestFrequencies, signal4LatestFrequencies, signal5LatestFrequencies, signal6LatestFrequencies, signal7LatestFrequencies;
-      signal0LatestFrequencies = Mock_Signal_1.getLatestFrequencies();
-      signal1LatestFrequencies = Mock_Signal_2.getLatestFrequencies();
+      signal0LatestFrequencies = Mock_Signal_0.getLatestFrequencies();
+      signal1LatestFrequencies = Mock_Signal_1.getLatestFrequencies();
       vector<HSV> signal0LatestColors, signal1LatestColors;
       for (int channelIndex = 0; channelIndex < NUM_CHANNELS; channelIndex++) {
         float signal0ChannelFreqIndex = (signal0LatestFrequencies[channelIndex] - MIN_FREQUENCY) / (MAX_FREQUENCY - MIN_FREQUENCY);
@@ -533,7 +541,7 @@ public:
 
 
       //flowersLatestFrequencies[0] = signal0LatestFrequencies;
-      // vector<float> signal1LatestFrequencies = Mock_Signal_2.getLatestFrequencies();
+      // vector<float> signal1LatestFrequencies = Mock_Signal_1.getLatestFrequencies();
       // flowersLatestFrequencies[1] = signal1LatestFrequencies;
       
       // Second, loop and push-forward the "all-shown" values for each flower
@@ -550,6 +558,9 @@ public:
               if (flowerIndex == 0) {
                 channelValues[sampleIndex] = signal0LatestValues[channelIndex];
               } else if (flowerIndex == 1) {
+                if (frameCount < 3) {
+                  cout << "THIS PART IS REACHED" << endl;
+                }
                 channelValues[sampleIndex] = signal1LatestValues[channelIndex];
               }
             }
@@ -572,7 +583,8 @@ public:
               sampleX = (channelRadius + (sampleValue * state().oscillationAmp)) * cos(sampleAngle);
               sampleY = (channelRadius + (sampleValue * state().oscillationAmp)) * sin(sampleAngle);
               sampleZ = -1 * FLOWER_DIST;
-            } else if (flowerIndex == 1) {
+            } 
+            if (flowerIndex == 1) {
               sampleX = (channelRadius + (sampleValue * state().oscillationAmp)) * cos(sampleAngle) + 30;
               sampleY = (channelRadius + (sampleValue * state().oscillationAmp)) * sin(sampleAngle);
               sampleZ = -1 * FLOWER_DIST;
