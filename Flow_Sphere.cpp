@@ -110,15 +110,12 @@ const float FLOWER_DIST = 50.0;                   // The distance of each flower
                                                   // ** CHANGE TO VARIABLE LATER
 
 // const float INTERVAL = 1.0 / 60.0; // 1/60 second
-// const int NUM_SAMPLES_INNER = 300;
-// const int DURATION = 6; 
 
 
 // This example shows how to use SynthVoice and SynthManagerto create an audio
 // visual synthesizer. In a class that inherits from SynthVoice you will
 // define the synth's voice parameters and the sound and graphic generation
 // processes in the onProcess() functions.
-
 class SineEnv : public SynthVoice
 {
 public:
@@ -220,15 +217,19 @@ struct CommonState {
   float baseRadius;    
   float channelDistance;
   float oscillationAmp;
+  int numSamplesInEachChannel[NUM_FLOWERS][NUM_CHANNELS];
 
   // Flowers' Colors and Line Locations
-  HSV flowersRealTimeColors[NUM_FLOWERS][NUM_CHANNELS];
+  HSV flowersRealTimeColors[NUM_FLOWERS][NUM_CHANNELS][WAVE_BUFFER_LENGTH];
   Vec3f flowersRealTimePositions[NUM_FLOWERS][NUM_CHANNELS][WAVE_BUFFER_LENGTH];
+  Vec3f flowersRealTimeStartingPositions[NUM_FLOWERS][NUM_CHANNELS][WAVE_BUFFER_LENGTH];
+  Vec3f flowersRealTimeEndingPositions[NUM_FLOWERS][NUM_CHANNELS][WAVE_BUFFER_LENGTH];
 };
 
 
 // To slurp a file
 string slurp(string fileName);
+
 
 
 // ----------------------------------------------------------------------
@@ -253,6 +254,8 @@ public:
 
   vector<vector<float>> flowersLatestValues;
   vector<vector<vector<float>>> flowersAllShownValues;
+  vector<vector<HSV>> flowersLatestColors;
+  vector<vector<vector<HSV>>> flowersAllShownColors;
   
   // --------- FLOWER TOPOLOGICAL ----------
   Mesh Flowers;
@@ -299,7 +302,6 @@ public:
       for (int channelIndex = 0; channelIndex < NUM_CHANNELS; channelIndex++) {
         // Initialize to red
         HSV initialRed = HSV(0.0f, 1.0f, 0.7f);
-        state().flowersRealTimeColors[flowerIndex][channelIndex] = initialRed;
 
         // The standard radius of this channel
         float channelRadius = BASE_RADIUS + channelIndex * CHANNEL_DISTANCE;
@@ -307,6 +309,7 @@ public:
         // Calculate the amount of samples of this channel
         float channelPerimeter = 2.0 * PI * channelRadius;
         int channelNumSamples = ceil(channelPerimeter / DENSITY);
+        state().numSamplesInEachChannel[flowerIndex][channelIndex] = channelNumSamples;
         float channelAngleStep = (2.0 * PI) / float(channelNumSamples);
         vector<float> oneChannelAllShownValues;
 
@@ -348,9 +351,12 @@ public:
             endingPos = state().flowersRealTimePositions[flowerIndex][channelIndex][0];
           }
 
-          Flowers.vertex(startingPos);
+          state().flowersRealTimeStartingPositions[flowerIndex][channelIndex][sampleIndex] = startingPos;
+          state().flowersRealTimeEndingPositions[flowerIndex][channelIndex][sampleIndex] = endingPos;
+
+          Flowers.vertex(state().flowersRealTimeStartingPositions[flowerIndex][channelIndex][sampleIndex]);
           Flowers.color(initialRed);
-          Flowers.vertex(endingPos);
+          Flowers.vertex(state().flowersRealTimeEndingPositions[flowerIndex][channelIndex][sampleIndex]);
           Flowers.color(initialRed);
         }
 
@@ -495,18 +501,14 @@ public:
             
 
             if (flowerIndex == 0) {
-              sampleX = (channelRadius + (sampleValue * OSC_AMP)) * cos(sampleAngle);
-              sampleY = (channelRadius + (sampleValue * OSC_AMP)) * sin(sampleAngle);
+              sampleX = (channelRadius + (sampleValue * state().oscillationAmp)) * cos(sampleAngle);
+              sampleY = (channelRadius + (sampleValue * state().oscillationAmp)) * sin(sampleAngle);
               sampleZ = -1 * FLOWER_DIST;
             } else if (flowerIndex == 1) {
-              sampleX = (channelRadius + (sampleValue * OSC_AMP)) * cos(sampleAngle) + 30;
-              sampleY = (channelRadius + (sampleValue * OSC_AMP)) * sin(sampleAngle);
+              sampleX = (channelRadius + (sampleValue * state().oscillationAmp)) * cos(sampleAngle) + 30;
+              sampleY = (channelRadius + (sampleValue * state().oscillationAmp)) * sin(sampleAngle);
               sampleZ = -1 * FLOWER_DIST;
             } 
-
-            if (frameCount <= 5) {
-              cout << sampleValue << endl;
-            }
 
             Vec3f samplePos = Vec3f(sampleX, sampleY, sampleZ);
             state().flowersRealTimePositions[flowerIndex][channelIndex][sampleIndex] = samplePos;
@@ -525,79 +527,38 @@ public:
               newEndingPos = state().flowersRealTimePositions[flowerIndex][channelIndex][0];
             }
 
-            Flowers.vertex(newStartingPos);
+            state().flowersRealTimeStartingPositions[flowerIndex][channelIndex][sampleIndex] = newStartingPos;
+            state().flowersRealTimeEndingPositions[flowerIndex][channelIndex][sampleIndex] = newEndingPos;
+
+            Flowers.vertex(state().flowersRealTimeStartingPositions[flowerIndex][channelIndex][sampleIndex]);
             Flowers.color(initialRed);
-            Flowers.vertex(newEndingPos);
+            Flowers.vertex(state().flowersRealTimeEndingPositions[flowerIndex][channelIndex][sampleIndex]);
             Flowers.color(initialRed);
           }
         }
       }
 
-      // Third, update each flowers' positions and colors
-      // Flowers.vertices().clear();
-      // // Flowers.colors().clear();
-      // for (int flowerIndex = 0; flowerIndex < NUM_FLOWERS; flowerIndex++) {
-      //   for (int channelIndex = 0; channelIndex < NUM_CHANNELS; channelIndex++) {
-      //     for (int sampleIndex = 0; sampleIndex < channelNumValues; sampleIndex++) {
-      //       Vec3f startingPos;
-      //       Vec3f endingPos;
-
-      //       if (sampleIndex < channelNumValues - 1) {
-      //         startingPos = state().flowersRealTimePositions[flowerIndex][channelIndex][sampleIndex];
-      //         endingPos = state().flowersRealTimePositions[flowerIndex][channelIndex][sampleIndex + 1];
-      //       } else {
-      //         startingPos = state().flowersRealTimePositions[flowerIndex][channelIndex][sampleIndex];
-      //         endingPos = state().flowersRealTimePositions[flowerIndex][channelIndex][0];
-      //      }
-
-      //       Flowers.vertex(startingPos);
-      //       Flowers.color(initialRed);
-      //       Flowers.vertex(endingPos);
-      //       Flowers.color(initialRed);
-      //     }
-      //   }
-      // }
-      
-      // ------- EXECUTE THE REFRESHING WORKS HERE -------
-
-
-        // for (int startLayer = 0; startLayer < currentFiredNeuronPos.size() - 1; startLayer++) {
-        //   vector<Vec3f> startLayerPositions = currentFiredNeuronPos[startLayer];
-        //   vector<Vec3f> endLayerPositions = currentFiredNeuronPos[startLayer + 1];
-
-        //   for (Vec3f oneStartPosition : startLayerPositions) {
-        //    for (Vec3f oneEndPosition : endLayerPositions) {
-        //       ConnectionLines.vertex(oneStartPosition);
-        //       ConnectionLines.color(HSV(0.17f, 1.0f, 1.0f));
-        //       ConnectionLines.vertex(oneEndPosition);
-        //       ConnectionLines.color(HSV(0.17f, 1.0f, 1.0f));
-
-        //       state().linesStartingFixedPosition[lineIteration] = oneStartPosition;
-        //       state().linesEndingFixedPosition[lineIteration] = oneEndPosition;
-
-        //       lineIteration += 1;
-        //     }
-        //   }
-        // }
-        
-
-        // Draw a window that contains the synth control panel
-        // Refresh & is primary
-        synthManager.drawSynthControlPanel();
-        imguiEndFrame();
-        navControl().active(navi);
+      // Draw a window that contains the synth control panel
+      // Refresh & is primary
+      synthManager.drawSynthControlPanel();
+      imguiEndFrame();
+      navControl().active(navi);
 
     } else {
         nav().set(state().pose);
-
-        // Flowers.vertices().clear();
+        Flowers.vertices().clear();
         // Flowers.colors().clear();
-        // for (int line = 0; line < linePosArchiveSize; line++) {
-        //   ConnectionLines.vertex(state().linesStartingFixedPosition[line]);
-        //   ConnectionLines.color(state().linesRealTimeColor);
-        //   ConnectionLines.vertex(state().linesEndingFixedPosition[line]);
-        //   ConnectionLines.color(state().linesRealTimeColor);
-        // }
+        for (int flowerIndex = 0; flowerIndex < NUM_FLOWERS; flowerIndex++) {
+          for (int channelIndex = 0; channelIndex < NUM_CHANNELS; channelIndex++) {
+            int numSamplesInThisChannel = state().numSamplesInEachChannel[flowerIndex][channelIndex];
+            for (int sampleIndex = 0; sampleIndex < numSamplesInThisChannel - 1; sampleIndex++) {
+              Flowers.vertex(state().flowersRealTimeStartingPositions[flowerIndex][channelIndex][sampleIndex]);
+              //Flowers.color(initialRed);
+              Flowers.vertex(state().flowersRealTimeEndingPositions[flowerIndex][channelIndex][sampleIndex]);
+              //Flowers.color(initialRed);
+            }
+          }
+        }
 
     }
 
