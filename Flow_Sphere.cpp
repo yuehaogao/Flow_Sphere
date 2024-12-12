@@ -5,7 +5,7 @@
 // https://www.media.mit.edu/projects/flower-eeg-visualization-with-the-aid-of-machine-learning/overview/
 
 
-// 8:55PM
+// 3:55PM
 // LAST VERSION BEFORE THE MAJOR CHANGE TO MULTI-FLOWER IN ONE MESH
 
 /*
@@ -476,8 +476,9 @@ public:
 
       // First, let the classes upgrade the latest value of the mock EEGs
       // As well as the latest colors decided by the latest frequency values
-      //vector<float> signal0LatestValues, signal1LatestValues, signal2LatestValues, signal3LatestValues, signal4LatestValues, signal5LatestValues, signal6LatestValues, signal7LatestValues;
-      vector<float> signal0LatestValues, signal1LatestValues;
+      
+      // vector<float> signal0LatestValues, signal1LatestValues, signal2LatestValues, signal3LatestValues, signal4LatestValues, signal5LatestValues, signal6LatestValues, signal7LatestValues;
+      vector<float> signal0LatestValues, signal1LatestValues, signal2LatestValues;
       if (NUM_FLOWERS >= 1) {
         signal0LatestValues = Mock_Signal_1.getLatestValues();
         flowersLatestValues[0] = signal0LatestValues;
@@ -487,7 +488,7 @@ public:
         flowersLatestValues[1] = signal1LatestValues;
       }
       if (NUM_FLOWERS >= 3) {
-        cout << "This part is entered, which is not supposed to" << endl;
+        // cout << "This part is entered, which is not supposed to" << endl;
         // signal2LatestValues = Mock_Signal_3.getLatestValues();
         // flowersLatestValues[2] = signal2LatestValues;
       } else { }
@@ -581,7 +582,15 @@ public:
             state().flowersRealTimePositions[flowerIndex][channelIndex][sampleIndex] = samplePos;
           }
 
-          // Third, update each flowers' positions and colors
+          
+        }
+      }
+
+      // Third, update each flowers' positions and colors
+      for (int flowerIndex = 0; flowerIndex < NUM_FLOWERS; flowerIndex++) {
+        for (int channelIndex = 0; channelIndex < NUM_CHANNELS; channelIndex++) {
+          vector<float> channelValues = flowersAllShownValues[flowerIndex][channelIndex];
+          int channelNumValues = channelValues.size();
           for (int sampleIndex = 0; sampleIndex < channelNumValues; sampleIndex++) {
             Vec3f newStartingPos;
             Vec3f newEndingPos;
