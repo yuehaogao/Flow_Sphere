@@ -5,7 +5,7 @@
 // https://www.media.mit.edu/projects/flower-eeg-visualization-with-the-aid-of-machine-learning/overview/
 
 
-// 3:55PM
+// 8:55PM
 // LAST VERSION BEFORE THE MAJOR CHANGE TO MULTI-FLOWER IN ONE MESH
 
 /*
@@ -108,6 +108,8 @@ const float BASE_RADIUS = CENTRAL_RADIUS - (0.5 * CHANNEL_DISTANCE * NUM_FLOWERS
                                                   // The radius of the inner-most channel
 const float FLOWER_DIST = 50.0;                   // The distance of each flower mesh to the origin
                                                   // ** CHANGE TO VARIABLE LATER
+const float MAX_HUE = 0.75;
+const float MIN_BRIGHNESS = 0.5;
 
 // const float INTERVAL = 1.0 / 60.0; // 1/60 second
 
@@ -254,8 +256,9 @@ public:
 
   vector<vector<float>> flowersLatestValues;
   vector<vector<vector<float>>> flowersAllShownValues;
-  vector<vector<HSV>> flowersLatestColors;
-  vector<vector<vector<HSV>>> flowersAllShownColors;
+  //vector<vector<float>> flowersLatestFrequencies;
+  //vector<vector<HSV>> flowersLatestColors;
+  //vector<vector<vector<HSV>>> flowersAllShownColors;
   
   // --------- FLOWER TOPOLOGICAL ----------
   Mesh Flowers;
@@ -298,10 +301,13 @@ public:
       vector<float> oneFlowerLatestValues;
       vector<vector<float>> oneFlowerAllShownValues;
 
+      //vector<float> oneFlowerLatestFrequencies;
+      //vector<HSV> oneFlowerLatestColors;
+
       // ****** FOR EACH EEG CHANNEL IN A FLOWER: ******
       for (int channelIndex = 0; channelIndex < NUM_CHANNELS; channelIndex++) {
         // Initialize to red
-        HSV initialRed = HSV(0.0f, 1.0f, 0.7f);
+        HSV initialRed = HSV(0.0f, 1.0f, 0.75f);
 
         // The standard radius of this channel
         float channelRadius = BASE_RADIUS + channelIndex * CHANNEL_DISTANCE;
@@ -313,10 +319,14 @@ public:
         float channelAngleStep = (2.0 * PI) / float(channelNumSamples);
         vector<float> oneChannelAllShownValues;
 
+        //oneFlowerLatestFrequencies.push_back(0.0);
+        //oneFlowerLatestColors.push_back(initialRed);
+
         // ****** FOR EACH SAMPLE IN A CHANNEL: ******
         for (int sampleIndex = 0; sampleIndex < channelNumSamples; sampleIndex++) {
           // Initialize the backend "all-shown" values to 0.0
           oneChannelAllShownValues.push_back(0.0);
+
 
           // Initialize the points to perfect circles
           float sampleAngle = REFRESH_ANGLE + sampleIndex * channelAngleStep;
@@ -334,6 +344,7 @@ public:
 
           Vec3f samplePos = Vec3f(sampleX, sampleY, sampleZ);
           state().flowersRealTimePositions[flowerIndex][channelIndex][sampleIndex] = samplePos;
+          state().flowersRealTimeColors[flowerIndex][channelIndex][sampleIndex] = initialRed;
         }
 
         // Then, draw the corresponding lines according to the initialized values
@@ -355,18 +366,20 @@ public:
           state().flowersRealTimeEndingPositions[flowerIndex][channelIndex][sampleIndex] = endingPos;
 
           Flowers.vertex(state().flowersRealTimeStartingPositions[flowerIndex][channelIndex][sampleIndex]);
-          Flowers.color(initialRed);
+          Flowers.color(state().flowersRealTimeColors[flowerIndex][channelIndex][sampleIndex]);
           Flowers.vertex(state().flowersRealTimeEndingPositions[flowerIndex][channelIndex][sampleIndex]);
-          Flowers.color(initialRed);
+          Flowers.color(state().flowersRealTimeColors[flowerIndex][channelIndex][sampleIndex]);
         }
 
         // Initialize the backend "latest" values to 0.0
         oneFlowerLatestValues.push_back(0.0);
         oneFlowerAllShownValues.push_back(oneChannelAllShownValues);
+
       }
 
       flowersLatestValues.push_back(oneFlowerLatestValues);
       flowersAllShownValues.push_back(oneFlowerAllShownValues);
+
     }
 
     navControl().active(false); // Disable navigation via keyboard, since we
@@ -459,14 +472,68 @@ public:
 
       // Clear the positions and colors from the previous frame
       Flowers.vertices().clear();
-      HSV initialRed = HSV(0.0f, 1.0f, 0.7f);
-      // Flowers.colors().clear();
+      Flowers.colors().clear();
 
       // First, let the classes upgrade the latest value of the mock EEGs
-      vector<float> signal0LatestValues = Mock_Signal_1.getLatestValues();
-      flowersLatestValues[0] = signal0LatestValues;
-      vector<float> signal1LatestValues = Mock_Signal_2.getLatestValues();
-      flowersLatestValues[1] = signal1LatestValues;
+      // As well as the latest colors decided by the latest frequency values
+      //vector<float> signal0LatestValues, signal1LatestValues, signal2LatestValues, signal3LatestValues, signal4LatestValues, signal5LatestValues, signal6LatestValues, signal7LatestValues;
+      vector<float> signal0LatestValues, signal1LatestValues;
+      if (NUM_FLOWERS >= 1) {
+        signal0LatestValues = Mock_Signal_1.getLatestValues();
+        flowersLatestValues[0] = signal0LatestValues;
+      } 
+      if (NUM_FLOWERS >= 2) {
+        signal1LatestValues = Mock_Signal_2.getLatestValues();
+        flowersLatestValues[1] = signal1LatestValues;
+      }
+      if (NUM_FLOWERS >= 3) {
+        cout << "This part is entered, which is not supposed to" << endl;
+        // signal2LatestValues = Mock_Signal_3.getLatestValues();
+        // flowersLatestValues[2] = signal2LatestValues;
+      } else { }
+
+      // Get the latest colors
+      vector<float> signal0LatestFrequencies, signal1LatestFrequencies, signal2LatestFrequencies, signal3LatestFrequencies, signal4LatestFrequencies, signal5LatestFrequencies, signal6LatestFrequencies, signal7LatestFrequencies;
+      signal0LatestFrequencies = Mock_Signal_1.getLatestFrequencies();
+      signal1LatestFrequencies = Mock_Signal_2.getLatestFrequencies();
+      vector<HSV> signal0LatestColors, signal1LatestColors;
+      for (int channelIndex = 0; channelIndex < NUM_CHANNELS; channelIndex++) {
+        float signal0ChannelFreqIndex = (signal0LatestFrequencies[channelIndex] - MIN_FREQUENCY) / (MAX_FREQUENCY - MIN_FREQUENCY);
+        float signal0ChannelNewHue = MAX_HUE * signal0ChannelFreqIndex;
+        float signal0ChannelNewBrightness = MIN_BRIGHNESS + (1.0 - MIN_BRIGHNESS) * signal0ChannelFreqIndex;
+        HSV signal0ChannelNewColor = HSV(signal0ChannelNewHue, 1.0, signal0ChannelNewBrightness);
+        signal0LatestColors.push_back(signal0ChannelNewColor);
+
+        float signal1ChannelFreqIndex = (signal1LatestFrequencies[channelIndex] - MIN_FREQUENCY) / (MAX_FREQUENCY - MIN_FREQUENCY);
+        float signal1ChannelNewHue = MAX_HUE * signal1ChannelFreqIndex;
+        float signal1ChannelNewBrightness = MIN_BRIGHNESS + (1.0 - MIN_BRIGHNESS) * signal1ChannelFreqIndex;
+        HSV signal1ChannelNewColor = HSV(signal1ChannelNewHue, 1.0, signal1ChannelNewBrightness);
+        signal1LatestColors.push_back(signal1ChannelNewColor);
+      }
+
+      // Update every color and draw them
+      for (int flowerIndex = 0; flowerIndex < NUM_FLOWERS; flowerIndex++) {
+        for (int channelIndex = 0; channelIndex < NUM_CHANNELS; channelIndex++) {
+          int numSamplesInThisChannel = state().numSamplesInEachChannel[flowerIndex][channelIndex];
+          for (int sampleIndex = numSamplesInThisChannel - 1; sampleIndex >= 0; sampleIndex--) {
+            if (sampleIndex > 0) {
+              state().flowersRealTimeColors[flowerIndex][channelIndex][sampleIndex] = state().flowersRealTimeColors[flowerIndex][channelIndex][sampleIndex - 1];
+            } else {
+              if (flowerIndex == 0) {
+                state().flowersRealTimeColors[flowerIndex][channelIndex][sampleIndex] = signal0LatestColors[channelIndex];
+              } else if (flowerIndex == 1) {
+                state().flowersRealTimeColors[flowerIndex][channelIndex][sampleIndex] = signal1LatestColors[channelIndex];
+              }
+            }
+          }
+        }
+      }
+ 
+
+
+      //flowersLatestFrequencies[0] = signal0LatestFrequencies;
+      // vector<float> signal1LatestFrequencies = Mock_Signal_2.getLatestFrequencies();
+      // flowersLatestFrequencies[1] = signal1LatestFrequencies;
       
       // Second, loop and push-forward the "all-shown" values for each flower
       // Meanwhile calculate the new position of each sample
@@ -531,9 +598,9 @@ public:
             state().flowersRealTimeEndingPositions[flowerIndex][channelIndex][sampleIndex] = newEndingPos;
 
             Flowers.vertex(state().flowersRealTimeStartingPositions[flowerIndex][channelIndex][sampleIndex]);
-            Flowers.color(initialRed);
+            Flowers.color(state().flowersRealTimeColors[flowerIndex][channelIndex][sampleIndex]);
             Flowers.vertex(state().flowersRealTimeEndingPositions[flowerIndex][channelIndex][sampleIndex]);
-            Flowers.color(initialRed);
+            Flowers.color(state().flowersRealTimeColors[flowerIndex][channelIndex][sampleIndex]);
           }
         }
       }
@@ -545,24 +612,21 @@ public:
       navControl().active(navi);
 
     } else {
-        nav().set(state().pose);
-        Flowers.vertices().clear();
-        // Flowers.colors().clear();
-        for (int flowerIndex = 0; flowerIndex < NUM_FLOWERS; flowerIndex++) {
-          for (int channelIndex = 0; channelIndex < NUM_CHANNELS; channelIndex++) {
-            int numSamplesInThisChannel = state().numSamplesInEachChannel[flowerIndex][channelIndex];
-            for (int sampleIndex = 0; sampleIndex < numSamplesInThisChannel - 1; sampleIndex++) {
-              Flowers.vertex(state().flowersRealTimeStartingPositions[flowerIndex][channelIndex][sampleIndex]);
-              //Flowers.color(initialRed);
-              Flowers.vertex(state().flowersRealTimeEndingPositions[flowerIndex][channelIndex][sampleIndex]);
-              //Flowers.color(initialRed);
-            }
+      nav().set(state().pose);
+      Flowers.vertices().clear();
+      Flowers.colors().clear();
+      for (int flowerIndex = 0; flowerIndex < NUM_FLOWERS; flowerIndex++) {
+        for (int channelIndex = 0; channelIndex < NUM_CHANNELS; channelIndex++) {
+          int numSamplesInThisChannel = state().numSamplesInEachChannel[flowerIndex][channelIndex];
+          for (int sampleIndex = 0; sampleIndex < numSamplesInThisChannel - 1; sampleIndex++) {
+            Flowers.vertex(state().flowersRealTimeStartingPositions[flowerIndex][channelIndex][sampleIndex]);
+            Flowers.color(state().flowersRealTimeColors[flowerIndex][channelIndex][sampleIndex]);
+            Flowers.vertex(state().flowersRealTimeEndingPositions[flowerIndex][channelIndex][sampleIndex]);
+            Flowers.color(state().flowersRealTimeColors[flowerIndex][channelIndex][sampleIndex]);
           }
         }
-
-    }
-
-    
+      }
+    } 
   }
 
 
