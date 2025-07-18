@@ -1,14 +1,12 @@
-// MAT594P, Spring 2024
-// Yuehao Gao
+// FLOW_SPHERE.CPP
+
+
+// Yuehao Gao, 2025
 // Designed based on Myungin Lee(2022) Sine Envelope with Visuals
-// Inspired by Neo (Mostafa) Mohsenvand's Project: "Flower"
+
 // https://www.media.mit.edu/projects/flower-eeg-visualization-with-the-aid-of-machine-learning/overview/
 
 
-// 12/12 9:50AM
-// ** CHANGE LATER
-// - Initialized positions: front 4, back 4
-// - Spinning directions
 
 /*
  * Purpose:
@@ -91,13 +89,13 @@ using namespace std;
 #define FFT_SIZE 4048
 #define PI 3.1415926535
 
-const int NUM_FLOWERS = 2;                        // How many flowers are there, meaning how many participants are observed
-const int NUM_CHANNELS = 12;                      // How many EEG channels are there for one participant
+const int NUM_FLOWERS = 1;                        // How many flowers are there, meaning how many participants are observed
+const int NUM_CHANNELS = 4;                      // How many EEG channels are there for one participant
 // const int NUM_SHADOWS = 8;                        // How many lines (hot and shadows) are there for each channel
 const int WAVE_BUFFER_LENGTH = 600;               // The length of the buffer storing the wave values
 const float DENSITY = 0.2;                        // How dense the samples are on each channel
-const float MIN_FREQUENCY = 4.0;                  // Lower limit of mock EEG frequency range
-const float MAX_FREQUENCY = 30.0;                 // Upper limit of mock EEG frequency range
+const float MIN_FREQUENCY = 4.0;                  // Lower limit of EEG frequency range
+const float MAX_FREQUENCY = 30.0;                 // Upper limit of EEG frequency range
 const float REFRESH_ANGLE = PI * -0.5;            // The refreshing point in the circle
                                                   // ** CHANGE TO VARIABLE LATER
 const float CENTRAL_RADIUS = 6.0;                 // The radius of the middle channel of each EEG Flower Mesh
@@ -260,8 +258,8 @@ public:
   int frameCount;
 
   // --------- EEG VALUES ARCHIVE ----------
-  Mock_EEG Mock_Signal_0 = Mock_EEG(NUM_CHANNELS, MIN_FREQUENCY, MAX_FREQUENCY);
-  Mock_EEG Mock_Signal_1 = Mock_EEG(NUM_CHANNELS, MIN_FREQUENCY + 6, MAX_FREQUENCY - 0.5);
+  Mock_EEG Signal_0 = Mock_EEG(NUM_CHANNELS, MIN_FREQUENCY, MAX_FREQUENCY);
+
 
   vector<vector<float>> flowersLatestValues;
   vector<vector<vector<float>>> flowersAllShownValues;
@@ -325,8 +323,6 @@ public:
         float channelAngleStep = (2.0 * PI) / float(channelNumSamples);
         vector<float> oneChannelAllShownValues;
 
-        //oneFlowerLatestFrequencies.push_back(0.0);
-        //oneFlowerLatestColors.push_back(initialRed);
 
         // ****** FOR EACH SAMPLE IN A CHANNEL: ******
         for (int sampleIndex = 0; sampleIndex < channelNumSamples; sampleIndex++) {
@@ -480,56 +476,31 @@ public:
       Flowers.vertices().clear();
       Flowers.colors().clear();
 
-      // First, let the classes upgrade the latest value of the mock EEGs
+      // First, let the classes upgrade the latest value of the EEGs
       // As well as the latest colors decided by the latest frequency values
       
       // vector<float> signal0LatestValues, signal1LatestValues, signal2LatestValues, signal3LatestValues, signal4LatestValues, signal5LatestValues, signal6LatestValues, signal7LatestValues;
       vector<float> signal0LatestValues, signal1LatestValues, signal2LatestValues;
       if (NUM_FLOWERS >= 1) {
-        signal0LatestValues = Mock_Signal_0.getLatestValues();
+        signal0LatestValues = Signal_0.getLatestValues();
         flowersLatestValues[0] = signal0LatestValues;
       } 
-      if (NUM_FLOWERS >= 2) {
-        signal1LatestValues = Mock_Signal_1.getLatestValues();
-        flowersLatestValues[1] = signal1LatestValues;
-      }
-
-      // int allTheSame = 0;
-      // for (int i = 0; i < signal0LatestValues.size() - 1; i++) {
-      //   if (signal0LatestValues[i] == signal1LatestValues[i]) {
-      //     cout << "Same" << endl;
-      //   } else {
-      //     cout << "Different" << endl;
-      //   }
-      // }
 
 
-      //if (NUM_FLOWERS >= 3) {
-        // cout << "This part is entered, which is not supposed to" << endl;
-        // signal2LatestValues = Mock_Signal_3.getLatestValues();
-        // flowersLatestValues[2] = signal2LatestValues;
-      //} else { }
+
 
       // Get the latest colors
       vector<float> signal0LatestFrequencies, signal1LatestFrequencies, signal2LatestFrequencies, signal3LatestFrequencies, signal4LatestFrequencies, signal5LatestFrequencies, signal6LatestFrequencies, signal7LatestFrequencies;
-      signal0LatestFrequencies = Mock_Signal_0.getLatestFrequencies();
-      signal1LatestFrequencies = Mock_Signal_1.getLatestFrequencies();
+      signal0LatestFrequencies = Signal_0.getLatestFrequencies();
       vector<HSV> signal0LatestColors, signal1LatestColors;
       for (int channelIndex = 0; channelIndex < NUM_CHANNELS; channelIndex++) {
-        // float signal0ChannelFreqIndex = (pow(signal0LatestFrequencies[channelIndex], 2) - pow(MIN_FREQUENCY, 2)) / (pow(MAX_FREQUENCY, 2) - pow(MIN_FREQUENCY, 2));
         float signal0ChannelFreqIndex = abs(pow(signal0LatestFrequencies[channelIndex], HUE_CONTRAST) - pow(CENTRAL_LOWER_BETTA, HUE_CONTRAST)) / max((pow(CENTRAL_LOWER_BETTA, HUE_CONTRAST) - pow(MIN_FREQUENCY, HUE_CONTRAST)), (pow(MAX_FREQUENCY, HUE_CONTRAST) - pow(CENTRAL_LOWER_BETTA, HUE_CONTRAST)));
         float signal0ChannelNewHue = 1.0 - (MAX_HUE * signal0ChannelFreqIndex);
         float signal0ChannelNewBrightness = MIN_BRIGHNESS + (1.0 - MIN_BRIGHNESS) * signal0ChannelFreqIndex;
         HSV signal0ChannelNewColor = HSV(signal0ChannelNewHue, 1.0, signal0ChannelNewBrightness);
         signal0LatestColors.push_back(signal0ChannelNewColor);
 
-        if (NUM_FLOWERS >= 2) {
-          float signal1ChannelFreqIndex = abs(pow(signal1LatestFrequencies[channelIndex], HUE_CONTRAST) - pow(CENTRAL_LOWER_BETTA, HUE_CONTRAST)) / max((pow(CENTRAL_LOWER_BETTA, HUE_CONTRAST) - pow(MIN_FREQUENCY, HUE_CONTRAST)), (pow(MAX_FREQUENCY, HUE_CONTRAST) - pow(CENTRAL_LOWER_BETTA, HUE_CONTRAST)));
-          float signal1ChannelNewHue = 1.0 - (MAX_HUE * signal1ChannelFreqIndex);
-          float signal1ChannelNewBrightness = MIN_BRIGHNESS + (1.0 - MIN_BRIGHNESS) * signal1ChannelFreqIndex;
-          HSV signal1ChannelNewColor = HSV(signal1ChannelNewHue, 1.0, signal1ChannelNewBrightness);
-          signal1LatestColors.push_back(signal1ChannelNewColor);
-        }
+       
       }
 
       // Update every color and draw them
@@ -551,10 +522,6 @@ public:
       }
 
 
-      //flowersLatestFrequencies[0] = signal0LatestFrequencies;
-      // vector<float> signal1LatestFrequencies = Mock_Signal_1.getLatestFrequencies();
-      // flowersLatestFrequencies[1] = signal1LatestFrequencies;
-      
       // Second, loop and push-forward the "all-shown" values for each flower
       // Meanwhile calculate the new position of each sample
       for (int flowerIndex = 0; flowerIndex < NUM_FLOWERS; flowerIndex++) {
@@ -568,12 +535,11 @@ public:
             } else {
               if (flowerIndex == 0) {
                 channelValues[sampleIndex] = signal0LatestValues[channelIndex];
-              } else if (flowerIndex == 1) {
-                // if (frameCount < 3) {
-                //   cout << "THIS PART IS REACHED" << endl;
-                // }
-                channelValues[sampleIndex] = signal1LatestValues[channelIndex];
-              }
+              } 
+              // else if (flowerIndex == 1) {
+                
+              //   channelValues[sampleIndex] = signal1LatestValues[channelIndex];
+              // }
             }
           }
           flowersAllShownValues[flowerIndex][channelIndex] = channelValues;
@@ -836,3 +802,4 @@ int main()
   app.start();
   return 0;
 }
+
