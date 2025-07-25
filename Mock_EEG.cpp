@@ -15,7 +15,7 @@
  */
 
 
- /*
+ 
 
 #include "Mock_EEG.hpp"
 #include <iostream>
@@ -30,24 +30,33 @@
 
 #define EEG_OSC_PORT 9000
 
-#define NUM_CHANNELS 4
+// #define NUM_CHANNELS 4
+
+
 
 class EEGOscListener : public osc::OscPacketListener {
-public:
-    float receivedValues[NUM_CHANNELS] = {0.0f};
-    std::mutex mtx;
-
-protected:
+    public:
+        static const int NUM_CHANNELS = 4;
+        float receivedValues[NUM_CHANNELS] = {0.0f};
+        std::mutex mtx;
+    
+    protected:
     void ProcessMessage(const osc::ReceivedMessage& m, const IpEndpointName& remoteEndpoint) override {
         try {
             if (std::strcmp(m.AddressPattern(), "/eeg/raw") == 0) {
-                osc::ReceivedMessageArgumentStream args = m.ArgumentStream();
-                float temp[NUM_CHANNELS];
-                args >> temp[0] >> temp[1] >> temp[2] >> temp[3] >> osc::EndMessage;
-
+                float temp[NUM_CHANNELS] = {0.0f};
+                osc::ReceivedMessage::const_iterator arg = m.ArgumentsBegin();
+                for (int i = 0; i < NUM_CHANNELS && arg != m.ArgumentsEnd(); ++i, ++arg) {
+                    temp[i] = (arg)->AsFloatUnchecked();
+                }
+    
                 std::lock_guard<std::mutex> lock(mtx);
+                const float scaleFactor = 1000.0f;  // 缩放到[-1,1]范围
                 for (int i = 0; i < NUM_CHANNELS; ++i) {
-                    receivedValues[i] = temp[i];
+                    float originalValue = temp[i];
+                    originalValue = ((originalValue / scaleFactor) - 0.75f) * 10.0f;
+
+                    receivedValues[i] = originalValue;
                 }
             }
         } catch (osc::Exception& e) {
@@ -56,15 +65,20 @@ protected:
     }
 };
 
+
+
+
 static EEGOscListener listener;
-static UdpListeningReceiveSocket socket(
+static UdpListeningReceiveSocket oscSocket(
     IpEndpointName(IpEndpointName::ANY_ADDRESS, EEG_OSC_PORT),
     &listener
 );
 
 static void startOSCThread() {
-    std::thread([] { socket.Run(); }).detach();
+    std::thread([] { oscSocket.Run(); }).detach();
 }
+
+
 
 // Mock_EEG implementation
 Mock_EEG::Mock_EEG(int numChannels, float minFreq, float maxFreq)
@@ -78,16 +92,26 @@ Mock_EEG::Mock_EEG(int numChannels, float minFreq, float maxFreq)
         while (true) {
             {
                 std::lock_guard<std::mutex> lock(listener.mtx);
-                for (int i = 0; i < numChannels; ++i) {
-                    values[i] = listener.receivedValues[i];
-                    freqs[i] = minFreq + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX/(maxFreq - minFreq)));
+                for (int i = 0; i < this->numChannels; ++i) {
+                    this->values[i] = listener.receivedValues[i];
+                    this->freqs[i] = this->minFreq + static_cast<float>(rand()) /
+                        (static_cast<float>(RAND_MAX / (this->maxFreq - this->minFreq)));
                 }
+
+                std::cout << "[EEG OSC] Values: ";
+                for (int i = 0; i < this->numChannels; ++i) {
+                    std::cout << this->values[i] << " ";
+                }
+                std::cout << std::endl;
+
+
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(30));
         }
     });
     updateThread.detach();
 }
+
 
 std::vector<float> Mock_EEG::getLatestValues() {
     return values;
@@ -98,7 +122,6 @@ std::vector<float> Mock_EEG::getLatestFrequencies() {
 }
 
 
-*/
 
 
 
@@ -113,6 +136,7 @@ std::vector<float> Mock_EEG::getLatestFrequencies() {
  * -----------------------------------------------------------------------------
  */
 
+ /*
 #include <iostream>
 #include <vector>
 #include <cmath>
@@ -185,7 +209,7 @@ public:
     }
 };
 
-
+*/
 
 
 
