@@ -81,8 +81,11 @@
 #include "Gamma/Envelope.h"
 #include "Gamma/Oscillator.h"
 #include "Gamma/DFT.h"
+#include "Gamma/rnd.h"
 
-// using namespace gam;
+using namespace gam;
+
+
 using namespace al;
 using namespace std;
 
@@ -103,7 +106,8 @@ const float CHANNEL_DISTANCE = 10.0 / NUM_CHANNELS;
                                                   // The distance between each channel
                                                   // ** CHANGE TO VARIABLE LATER
 const float OSC_AMP = 0.9 * CHANNEL_DISTANCE;     // The oscilation amplitude of each channel
-                                                  // ** CHANGE TO VARIABLE LATER
+                            
+// ** CHANGE TO VARIABLE LATER
 const float BASE_RADIUS = CENTRAL_RADIUS - (0.5 * CHANNEL_DISTANCE * NUM_FLOWERS);               
                                                   // The radius of the inner-most channel
 const float FLOWER_DIST = 70.0;                   // The distance of each flower mesh to the origin
@@ -138,7 +142,11 @@ public:
   Mesh mMesh;
   double a;
   double b;
-  double spin = al::rnd::uniformS();
+  //double spin = al::rnd::uniformS();
+
+  double spin = gam::rnd::uniS(1.0);
+
+
   double timepose = 0;
   Vec3f note_position;
   Vec3f note_direction;
@@ -207,8 +215,13 @@ public:
   {
     float angle = getInternalParameterValue("frequency") / 200;
     mAmpEnv.reset();
-    a = al::rnd::uniform();
-    b = al::rnd::uniform();
+
+    // a = al::rnd::uniform();
+    // b = al::rnd::uniform();
+    
+    a = gam::rnd::uni(0.0, 1.0);
+    b = gam::rnd::uni(0.0, 1.0);
+
     timepose = 0;
     note_position = {0, 0, 0};
     note_direction = {sin(angle), cos(angle), 0};
