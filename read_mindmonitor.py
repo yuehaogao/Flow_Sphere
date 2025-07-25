@@ -53,7 +53,9 @@ def handle_eeg(address, *args):
     eeg_raw.append(list(args))
     
     # Trying to send raw EEG to Allolib
-    osc_client.send_message("/eeg", list(args))
+    osc_client.send_message("/eeg/raw", list(args))
+    
+    
     # print("EEG µV:", ", ".join([f"Ch{i+1}: {v:7.1f}" for i, v in enumerate(args)]))
     
     log_data.append({
@@ -182,12 +184,12 @@ print(f"✅ Listening on {ip}:{port} ... Forwarding EEG to {client_ip}:{client_p
 
 def save_log():
     if log_data:
-        print("Program Ended, Trying to Save EEG Data...")
+        print("Program Exited, Now Saving EEG Data...")
         df = pd.DataFrame(log_data)
         timestamp_str = time.strftime("%Y%m%d_%H%M%S", time.localtime())
         filename = f"eeg_log_{timestamp_str}.csv"
         df.to_csv(filename, index=False)
-        print(f"Data has been saved into {filename}")
+        print(f"成功保存, Data has been saved into {filename}")
 
 atexit.register(save_log)
 
