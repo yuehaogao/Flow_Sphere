@@ -1,200 +1,262 @@
+from datetime import datetime
 from pythonosc import dispatcher, osc_server, udp_client
-from collections import deque
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import numpy as np
 import threading
-import time
-from scipy.signal import butter, filtfilt, find_peaks
-import atexit
+import signal
+import sys
+import csv
+import os
 
-import pandas as pd
+import threading
+alive = True
+file_lock = threading.Lock()
+server = None  # 提前声明，后面会赋值
 
-log_data = []  # Dictionary
-start_time = time.time()
 
+# ==== CONFIG ====
+ip = "0.0.0.0"
+receive_port = 5089
+send_ip = "127.0.0.1"
+send_port = 9000
 
-waves = ['delta', 'theta', 'alpha', 'beta', 'gamma', 'flow']
-buffer_size = 200
-eeg_channels = 4
+# 数据窗长度（样本点）
+window_size = 500
+# Muse 2 原始EEG常见采样率（按你的实际值改：256 / 220 等）
 sampling_rate = 256
 
-data = {wave: deque([0.0]*buffer_size, maxlen=buffer_size) for wave in waves}
-eeg_raw = deque([[0.0]*eeg_channels for _ in range(buffer_size)], maxlen=buffer_size)
+channel_labels = ["TP9", "AF7", "AF8", "TP10"]
+n_channels = 4
 
-flow_history = deque(maxlen=20)
+# 实时缓冲
+eeg_data = np.zeros((n_channels, window_size), dtype=float)
+time_labels = [""] * window_size
 
-# -------------------
-# OSC Client（Sending to Flow_Sphere.cpp）
-# -------------------
-client_ip = "127.0.0.1"
-client_port = 9000  # Flow_Sphere.cpp should listen to this port
-osc_client = udp_client.SimpleUDPClient(client_ip, client_port)
+# ==== 频谱配置 ====
+# 频率范围固定为 1~60 Hz（线性）
+fmin, fmax = 1.0, 60.0
 
-# -------------------
-# OSC Receiving
-# -------------------
-def handle_band(wave):
-    def handler(address, *args):
-        value = sum(args) / len(args)
-        data[wave].append(value)
-        update_flow()
-        timestamp = time.time() - start_time
-        log_data.append({
-            'timestamp': timestamp,
-            'type': 'band',
-            'wave': wave,
-            'value': value
-        })
-    return handler
+# 基于窗口与采样率的频率轴（中心频率，线性）
+freqs_full = np.fft.rfftfreq(window_size, d=1.0 / sampling_rate)  # [0..Nyquist]
+freq_mask = (freqs_full >= fmin) & (freqs_full <= fmax)
+freqs = freqs_full[freq_mask]
+n_freqs = len(freqs)
 
-def handle_eeg(address, *args):
-    timestamp = time.time() - start_time
-    eeg_raw.append(list(args))
+# 用于绘制/写入的频谱矩阵（通道×频率，单位 dB）
+spectrum_db = np.zeros((n_channels, n_freqs), dtype=float)
+
+# ==== INIT OSC SENDER ====
+osc_sender = udp_client.SimpleUDPClient(send_ip, send_port)
+
+# ==== FILE SETUP ====
+start_time = datetime.now()
+
+# 1) 原始EEG CSV
+eeg_filename = start_time.strftime("EEG_%Y_%m_%d_%H-%M-%S.csv")
+eeg_csv_file = open(eeg_filename, 'w', newline='')
+eeg_csv_writer = csv.writer(eeg_csv_file)
+eeg_csv_writer.writerow(["Timestamp"] + channel_labels)  # Header
+
+# 2) 频谱CSV（dB）
+spec_filename = start_time.strftime("EEG_SPECTRUM_%Y_%m_%d_%H-%M-%S.csv")
+spec_csv_file = open(spec_filename, 'w', newline='')
+spec_csv_writer = csv.writer(spec_csv_file)
+spec_header = ["Timestamp", "Channel"] + [f"f_{f:.2f}Hz_dB" for f in freqs]
+spec_csv_writer.writerow(spec_header)
+
+# ==== EEG HANDLER ====
+def eeg_handler(address: str, *args):
+    """
+    每次收到 4 通道原始EEG：
+    - 写原始EEG CSV
+    - 转发到 /eeg/raw
+    - 更新环形缓冲
+    - 计算当前窗的频谱功率（转 dB）并写入频谱CSV
+    """
+    global eeg_data, time_labels, spectrum_db
+
+    now = datetime.now()
+    timestamp = now.strftime("%Y-%m-%d %H:%M:%S.%f")
+
+    # --- 写原始EEG到CSV ---
+    vals = [float(args[i]) for i in range(n_channels)]
+ 
+    with file_lock:
+        if alive and eeg_csv_file and (not eeg_csv_file.closed):
+            eeg_csv_writer.writerow([timestamp] + vals)
+
+    # --- 通过OSC转发原始EEG（保留你现有功能）---
+    osc_sender.send_message("/eeg/raw", vals)
+
+    # --- 更新实时缓冲（用于时域与频域绘制）---
+    for i in range(n_channels):
+        eeg_data[i, :-1] = eeg_data[i, 1:]
+        eeg_data[i, -1] = vals[i]
+    time_labels[:-1] = time_labels[1:]
+    time_labels[-1] = now.strftime("%M:%S")
+
+    # --- 计算当前窗频谱（去均值 + 汉宁窗 + rFFT → 功率 → dB）---
+    window = np.hanning(window_size)
+    win_energy = np.sum(window ** 2) + 1e-12
     
-    # Trying to send raw EEG to Allolib
-    osc_client.send_message("/eeg/raw", list(args))
+    # 频段边界（只需初始化一次缓存）
+    bands = {
+        "delta": (1.0, 4.0),
+        "theta": (4.0, 8.0),
+        "alpha": (8.0, 13.0),
+        "beta":  (13.0, 30.0),
+        "gamma": (30.0, 60.0),
+    }
+
+    if "band_masks_cached" not in globals():
+        global band_masks_cached
+        band_masks_cached = {name: (freqs_full >= lo) & (freqs_full <= hi)
+                             for name, (lo, hi) in bands.items()}
     
+    for ch in range(n_channels):
+        x = eeg_data[ch]
+        x = x - np.mean(x)
+        xw = x * window
+        X = np.fft.rfft(xw)
+        P = (np.abs(X) ** 2) / win_energy             # 线性功率谱
+        P_band = P[freq_mask]
+        P_db = 10.0 * np.log10(P_band + 1e-12)        # 仅用于画图/CSV
+        spectrum_db[ch, :] = P_db
     
-    # print("EEG µV:", ", ".join([f"Ch{i+1}: {v:7.1f}" for i, v in enumerate(args)]))
+        # --- 写频谱（dB）到CSV：逐通道一行 ---
+        row = [timestamp, channel_labels[ch]] + P_db.tolist()
+        with file_lock:
+            if alive and spec_csv_file and (not spec_csv_file.closed):
+                spec_csv_writer.writerow(row)
+
     
-    log_data.append({
-        'timestamp': timestamp,
-        'type': 'eeg_raw',
-        'ch1': args[0], 'ch2': args[1], 'ch3': args[2], 'ch4': args[3]
-    })
+        # === 新增：按频段积分（线性功率），并发送到 Allo ===
+        band_lin = {name: float(np.sum(P[mask])) for name, mask in band_masks_cached.items()}
 
-def update_flow():
-    alpha = data['alpha'][-1]
-    theta = data['theta'][-1]
-    beta = data['beta'][-1]
-    gamma = data['gamma'][-1]
+        # 主频（1–60 Hz 内的最大频点）
+        dom_idx = np.argmax(P[freq_mask])
+        dom_freq = float(freqs[dom_idx]) if len(freqs) else 0.0
 
-    epsilon = 1e-6
-    raw_flow = (alpha + 0.8 * theta + 0.5 * beta) / (0.5 * gamma + epsilon)
+        # /eeg/bands: [ch, delta, theta, alpha, beta, gamma]
+        osc_sender.send_message("/eeg/bands", [
+            ch,
+            band_lin["delta"],
+            band_lin["theta"],
+            band_lin["alpha"],
+            band_lin["beta"],
+            band_lin["gamma"],
+        ])
 
-    flow_history.append(raw_flow)
-    smoothed_flow = sum(flow_history) / len(flow_history)
-
-    data['flow'].append(smoothed_flow)
-
-    # If sending OSC：
-    # osc_client.send_message("/muse/flow", smoothed_flow)
-
-
-# -------------------
-# Filtering Curve
-# -------------------
-def bandpass_filter(data, lowcut=0.8, highcut=3.0, fs=256, order=3):
-    nyq = 0.5 * fs
-    low = lowcut / nyq
-    high = highcut / nyq
-    b, a = butter(order, [low, high], btype='band')
-    return filtfilt(b, a, data)
-
-# -------------------
-# Visualization
-# -------------------
-fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(10, 12))
-x = np.arange(buffer_size)
-
-# 1. Brain signals（单位 dB）
-lines = {wave: ax1.plot(x, list(data[wave]), label=wave)[0] for wave in waves}
-ax1.set_ylim(0, 1)
-ax1.set_title("Brainwave Band Powers")
-ax1.set_ylabel("Power (dB)")
-ax1.legend()
-
-# 2. Spectrum（in dB）
-fft_lines = {wave: ax2.plot([], [], label=wave + ' FFT')[0] for wave in waves}
-ax2.set_ylim(0, 100)
-ax2.set_xlim(0, buffer_size // 2)
-ax2.set_title("FFT Spectrum")
-ax2.set_ylabel("Amplitude (dB)")
-ax2.legend()
-
-# 3. Raw EEG（in μV）
-eeg_lines = [ax3.plot(x, [row[i] for row in eeg_raw], label=f"EEG {i+1}")[0] for i in range(eeg_channels)]
-ax3.set_ylim(-1000, 1000)
-ax3.set_title("Raw EEG (4 channels)")
-ax3.set_ylabel("Voltage (µV)")
-ax3.legend()
-
-# 4. Heart Beat
-heartbeat_line, = ax4.plot(x, [0]*buffer_size, label="Heartbeat Signal", color="red")
-heartbeat_peaks, = ax4.plot([], [], 'go', label="Peaks")
-ax4.set_ylim(-20, 20)
-ax4.set_title("Estimated Heartbeat Waveform (from EEG TP9)")
-ax4.set_ylabel("Voltage (µV)")
-ax4.legend()
-
-# -------------------
-# FFT Calculation
-# -------------------
-def compute_fft(signal):
-    y = np.array(signal)
-    fft_vals = np.abs(np.fft.rfft(y))
-    return fft_vals
-
-# -------------------
-# Refresh Visualization
-# -------------------
-def animate(i):
-    # 1. Brain Signal
-    for wave in waves:
-        lines[wave].set_ydata(list(data[wave]))
-        fft_y = compute_fft(list(data[wave]))
-        fft_x = np.linspace(0, 50, len(fft_y))
-        fft_lines[wave].set_data(fft_x, fft_y)
-
-    # 2. Raw EEG
-    for i in range(eeg_channels):
-        eeg_lines[i].set_ydata([row[i] for row in eeg_raw])
-
-    # 3. Heart Beat
-    eeg_channel = [row[0] for row in eeg_raw]
-    filtered = bandpass_filter(eeg_channel)
-    heartbeat_line.set_ydata(filtered)
-
-    peaks, _ = find_peaks(filtered, distance=sampling_rate/2)
-    peak_x = peaks[-10:]  # only showing the latest
-    peak_y = [filtered[i] for i in peak_x]
-    heartbeat_peaks.set_data(peak_x, peak_y)
-
-    return list(lines.values()) + list(fft_lines.values()) + eeg_lines + [heartbeat_line, heartbeat_peaks]
-
-ani = animation.FuncAnimation(fig, animate, interval=100, blit=True)
-
-# -------------------
-# Start OSC Server
-# -------------------
-dispatcher = dispatcher.Dispatcher()
-for wave in ['delta', 'theta', 'alpha', 'beta', 'gamma']:
-    dispatcher.map(f"/muse/elements/{wave}_absolute", handle_band(wave))
-dispatcher.map("/muse/eeg", handle_eeg)
-
-ip = "0.0.0.0"
-port = 5089
-server = osc_server.ThreadingOSCUDPServer((ip, port), dispatcher)
-threading.Thread(target=server.serve_forever, daemon=True).start()
-
-print(f"✅ Listening on {ip}:{port} ... Forwarding EEG to {client_ip}:{client_port}")
+        # /eeg/dominant: [ch, dom_freq]
+        osc_sender.send_message("/eeg/dominant", [ch, dom_freq])
+       
 
 
 
-def save_log():
-    if log_data:
-        print("Program Exited, Now Saving EEG Data...")
-        df = pd.DataFrame(log_data)
-        timestamp_str = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-        filename = f"eeg_log_{timestamp_str}.csv"
-        df.to_csv(filename, index=False)
-        print(f"成功保存, Data has been saved into {filename}")
 
-atexit.register(save_log)
+# ==== PLOTTING ====
+# 窗口1：时域波形
+fig_time, ax_time = plt.subplots()
+time_lines = []
+colors = ['blue', 'orange', 'green', 'red']
+for i in range(n_channels):
+    (line,) = ax_time.plot(eeg_data[i], label=channel_labels[i], color=colors[i])
+    time_lines.append(line)
+ax_time.set_ylim(-100, 1000)  # 依据你的信号范围调整
+ax_time.set_xlim(0, window_size)
+ax_time.set_title("Real-Time EEG (μV)")
+ax_time.set_ylabel("μV")
+ax_time.set_xlabel("Time")
+ax_time.legend(loc="upper left")
 
-plt.tight_layout()
-plt.show()
+def update_time_plot(_):
+    for i in range(n_channels):
+        time_lines[i].set_ydata(eeg_data[i])
+    # 更新时间刻度标签
+    xticks = np.linspace(0, window_size - 1, 6, dtype=int)
+    ax_time.set_xticks(xticks)
+    labels = []
+    step = max(1, window_size // 6)
+    for k in range(0, window_size, step):
+        labels.append(time_labels[k])
+        if len(labels) == len(xticks):
+            break
+    while len(labels) < len(xticks):
+        labels.append("")
+    ax_time.set_xticklabels(labels)
+    return time_lines
+
+ani_time = animation.FuncAnimation(fig_time, update_time_plot, interval=50, cache_frame_data=False)
+
+# 窗口2：频谱（通道 × 频率，线性 1–60 Hz，dB 色图）
+fig_spec, ax_spec = plt.subplots()
+
+# 用 imshow + extent（线性频率轴）
+# imshow 期望图像 shape: (Y, X) = (n_channels, n_freqs)
+im = ax_spec.imshow(
+    spectrum_db,
+    aspect="auto",
+    origin="lower",
+    extent=[fmin, fmax, 0, n_channels],  # 线性 1–60 Hz
+    cmap="RdYlGn_r"  # 低=绿，高=红
+)
+
+ax_spec.set_title("Real-Time Spectrum Power (Channel × Frequency, dB)")
+ax_spec.set_xlabel("Frequency (Hz)")
+ax_spec.set_ylabel("Channel")
+ax_spec.set_yticks(np.arange(n_channels) + 0.5)
+ax_spec.set_yticklabels(channel_labels)
+
+cbar = plt.colorbar(im, ax=ax_spec)
+cbar.set_label("Power (dB)")
+
+def update_spec_plot(_):
+    # 更新图像数据
+    im.set_data(spectrum_db)
+    # 自动色阶（更稳定可改为固定范围：im.set_clim(vmin=-90, vmax=10)）
+    im.set_clim(vmin=np.min(spectrum_db), vmax=np.max(spectrum_db) + 1e-12)
+    return [im]
+
+ani_spec = animation.FuncAnimation(fig_spec, update_spec_plot, interval=100, cache_frame_data=False)
+
+# ==== EXIT CLEANUP ====
+def handle_exit(sig, frame):
+    global alive, server
+    print("\n🧠 Stopping... Saving files.")
+    alive = False
+    try:
+        if server is not None:
+            server.shutdown()     # 让 serve_forever 退出
+            server.server_close()
+    except Exception as e:
+        print(f"Server stop error: {e}")
+    with file_lock:
+        try:
+            if eeg_csv_file and not eeg_csv_file.closed:
+                eeg_csv_file.close()
+            if spec_csv_file and not spec_csv_file.closed:
+                spec_csv_file.close()
+        except Exception as e:
+            print(f"Close file error: {e}")
+    print(f"✅ Saved EEG:      {os.path.abspath(eeg_filename)}")
+    print(f"✅ Saved Spectrum: {os.path.abspath(spec_filename)}")
+    plt.close('all')
+    sys.exit(0)
 
 
+signal.signal(signal.SIGINT, handle_exit)
+signal.signal(signal.SIGTERM, handle_exit)
 
+# ==== SERVER START ====
+if __name__ == "__main__":
+    disp = dispatcher.Dispatcher()
+    # Mind Monitor 默认原始EEG地址：/muse/eeg
+    disp.map("/muse/eeg", eeg_handler)
+
+    server = osc_server.ThreadingOSCUDPServer((ip, receive_port), disp)
+    print(f"✅ Listening on {ip}:{receive_port}, forwarding EEG to {send_ip}:{send_port}")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    # 同时显示两个窗口
+    plt.show()
