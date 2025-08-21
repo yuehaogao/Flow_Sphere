@@ -1,4 +1,5 @@
-// FLOW_SPHERE.CPP
+// FLOW_SPHERE.CPP 老 2025-08-20-1622 使用constructor
+
 
 
 // Yuehao Gao, 2025
@@ -10,6 +11,7 @@
 
 /*
  * Purpose:
+ 
  * This file implements the main functionalities for the "Flow Sphere" project, 
  * an immersive EEG visualization system designed for the UCSB Allosphere. The 
  * goal is to analyze and visually represent group flow experiences during musical 
@@ -62,7 +64,8 @@
 #include <fstream>
 #include <time.h> 
 
-#include "Mock_EEG.cpp"       // The simulator of multi-channel EEG signal
+// #include "Mock_EEG.hpp"      
+#include "Mock_EEG.cpp" 
 
 //#include "al/app/al_App.hpp"
 #include "al/app/al_DistributedApp.hpp"
@@ -194,6 +197,7 @@ public:
       float s2;
       mEnvFollow(s1);
       mPan(s1, s1, s2);
+      
       io.out(0) += s1;
       io.out(1) += s2;
     }
@@ -260,6 +264,9 @@ string slurp(string fileName);
 struct MyApp : public DistributedAppWithState<CommonState>, public MIDIMessageHandler
 {
 public:
+
+  Mock_EEG Signal_0;
+  MyApp() : Signal_0(NUM_CHANNELS, "9000") {}
   
   SynthGUIManager<SineEnv> synthManager{"SineEnv"};                                      // GUI manager for SineEnv voices
   RtMidiIn midiIn;            // MIDI input carrier
@@ -270,10 +277,10 @@ public:
   bool navi = true;
   int frameCount;
 
-  // --------- EEG VALUES ARCHIVE ----------
-  Mock_EEG Signal_0 = Mock_EEG(NUM_CHANNELS, MIN_FREQUENCY, MAX_FREQUENCY);
-
-
+  bool debugPrint = true;      // 按 P 开关
+  int  printEveryNFrames = 60;
+  
+  
   vector<vector<float>> flowersLatestValues;
   vector<vector<vector<float>>> flowersAllShownValues;
 
@@ -300,6 +307,7 @@ public:
     if (!createPointShaderSuccess) {
       exit(1);
     }
+
 
     // Set up the parameters for the oval
     frameCount = 0;
@@ -496,25 +504,102 @@ public:
       vector<float> signal0LatestValues, signal1LatestValues, signal2LatestValues;
       if (NUM_FLOWERS >= 1) {
         signal0LatestValues = Signal_0.getLatestValues();
+
+
         flowersLatestValues[0] = signal0LatestValues;
       } 
 
+      // —— 取值（可能在启动早期还没满 NUM_CHANNELS）——
+  
+      auto vals       = Signal_0.getLatestValues();
+      auto bandPowers = Signal_0.getLatestBandPowers();
+      auto domFreqs   = Signal_0.getLatestFrequencies();
 
+      // 防止启动时尺寸不足造成越界
+      if (vals.size() < NUM_CHANNELS) vals.resize(NUM_CHANNELS, 0.0f);
+      if (domFreqs.size() < NUM_CHANNELS) domFreqs.resize(NUM_CHANNELS, 0.0f);
+      if (bandPowers.size() < NUM_CHANNELS) {
+        bandPowers.resize(NUM_CHANNELS, Mock_EEG::BandArray{0,0,0,0,0});
+      }
+
+      // 更新缓存给绘制用
+      flowersLatestValues[0] = vals;
+
+      // —— 有节制地打印 ——（避免刷屏：每 printEveryNFrames 帧打印一次）
+      if (debugPrint && (frameCount % printEveryNFrames == 0)) {
+        // 1) 原始值（期待 ~[-1,1] 为常态）
+        printf("[EEG] raw: ");
+        for (int ch = 0; ch < NUM_CHANNELS; ++ch) {
+          printf("% .3f  ", vals[ch]);
+        }
+        printf("\n");
+
+        // 2) 频段功率（线性和）：[Δ,Θ,Α,Β,Γ]，范围受你python端窗长与采样率影响
+        printf("[EEG] bands: ");
+        for (int ch = 0; ch < NUM_CHANNELS; ++ch) {
+          auto b = bandPowers[ch];
+          printf("[ch%d Δ%.2e Θ%.2e Α%.2e Β%.2e Γ%.2e]  ",
+                 ch, b[0], b[1], b[2], b[3], b[4]);
+        }
+        printf("\n");
+
+        // 3) 主频（Hz）
+        printf("[EEG] domHz: ");
+        for (int ch = 0; ch < NUM_CHANNELS; ++ch) {
+          printf("%.2f  ", domFreqs[ch]);
+        }
+        printf("\n");
+      }
 
 
       // Get the latest colors
-      vector<float> signal0LatestFrequencies, signal1LatestFrequencies, signal2LatestFrequencies, signal3LatestFrequencies, signal4LatestFrequencies, signal5LatestFrequencies, signal6LatestFrequencies, signal7LatestFrequencies;
-      signal0LatestFrequencies = Signal_0.getLatestFrequencies();
-      vector<HSV> signal0LatestColors, signal1LatestColors;
-      for (int channelIndex = 0; channelIndex < NUM_CHANNELS; channelIndex++) {
-        float signal0ChannelFreqIndex = abs(pow(signal0LatestFrequencies[channelIndex], HUE_CONTRAST) - pow(CENTRAL_LOWER_BETTA, HUE_CONTRAST)) / max((pow(CENTRAL_LOWER_BETTA, HUE_CONTRAST) - pow(MIN_FREQUENCY, HUE_CONTRAST)), (pow(MAX_FREQUENCY, HUE_CONTRAST) - pow(CENTRAL_LOWER_BETTA, HUE_CONTRAST)));
-        float signal0ChannelNewHue = 1.0 - (MAX_HUE * signal0ChannelFreqIndex);
-        float signal0ChannelNewBrightness = MIN_BRIGHNESS + (1.0 - MIN_BRIGHNESS) * signal0ChannelFreqIndex;
-        HSV signal0ChannelNewColor = HSV(signal0ChannelNewHue, 1.0, signal0ChannelNewBrightness);
-        signal0LatestColors.push_back(signal0ChannelNewColor);
+      // vector<float> signal0LatestFrequencies, signal1LatestFrequencies, signal2LatestFrequencies, signal3LatestFrequencies, signal4LatestFrequencies, signal5LatestFrequencies, signal6LatestFrequencies, signal7LatestFrequencies;
+      // signal0LatestFrequencies = Signal_0.getLatestFrequencies();
+      // vector<HSV> signal0LatestColors, signal1LatestColors;
+      // for (int channelIndex = 0; channelIndex < NUM_CHANNELS; channelIndex++) {
+      //   float signal0ChannelFreqIndex = abs(pow(signal0LatestFrequencies[channelIndex], HUE_CONTRAST) - pow(CENTRAL_LOWER_BETTA, HUE_CONTRAST)) / max((pow(CENTRAL_LOWER_BETTA, HUE_CONTRAST) - pow(MIN_FREQUENCY, HUE_CONTRAST)), (pow(MAX_FREQUENCY, HUE_CONTRAST) - pow(CENTRAL_LOWER_BETTA, HUE_CONTRAST)));
+      //   float signal0ChannelNewHue = 1.0 - (MAX_HUE * signal0ChannelFreqIndex);
+      //   float signal0ChannelNewBrightness = MIN_BRIGHNESS + (1.0 - MIN_BRIGHNESS) * signal0ChannelFreqIndex;
+      //   HSV signal0ChannelNewColor = HSV(signal0ChannelNewHue, 1.0, signal0ChannelNewBrightness);
+      //   signal0LatestColors.push_back(signal0ChannelNewColor);
+      // }
 
-       
+
+      vector<HSV> signal0LatestColors;
+      signal0LatestColors.reserve(NUM_CHANNELS);
+
+      for (int ch = 0; ch < NUM_CHANNELS; ++ch) {
+        float delta = bandPowers[ch][0];
+        float theta = bandPowers[ch][1];
+        float alpha = bandPowers[ch][2];
+        float beta  = bandPowers[ch][3];
+        float gamma = bandPowers[ch][4];
+
+        // 亮度由 alpha/theta 主导；你可以调权重
+        float score = 0.6f * alpha + 0.4f * theta;
+        float eps = 1e-9f;
+        float total = delta + theta + alpha + beta + gamma + eps;
+
+        // 归一 & sqrt 压缩，让强信号更亮
+        float brightness = std::sqrt(std::max(0.0f, score / total));
+
+        // 色相：alpha 偏蓝青(≈0.55)，theta 偏蓝紫(≈0.62)
+        float a_ratio = alpha / (alpha + theta + eps);
+        float hue = a_ratio * 0.55f + (1.0f - a_ratio) * 0.62f;
+
+        // （可选）用主频做一点轻微摆动
+        float f = (ch < (int)domFreqs.size()) ? domFreqs[ch] : 0.0f;
+        hue += 0.02f * std::sin(f * 0.1f);
+        if (hue < 0.0f) hue += 1.0f;
+        if (hue > 1.0f) hue -= 1.0f;
+
+        float saturation = 1.0f;
+        signal0LatestColors.emplace_back(hue, saturation,
+                                         std::max(0.2f, std::min(1.0f, brightness)));
       }
+
+
+
 
       // Update every color and draw them
       for (int flowerIndex = 0; flowerIndex < NUM_FLOWERS; flowerIndex++) {
@@ -526,9 +611,11 @@ public:
             } else {
               if (flowerIndex == 0) {
                 state().flowersRealTimeColors[flowerIndex][channelIndex][sampleIndex] = signal0LatestColors[channelIndex];
-              } else if (flowerIndex == 1) {
-                state().flowersRealTimeColors[flowerIndex][channelIndex][sampleIndex] = signal1LatestColors[channelIndex];
-              }
+              } 
+
+              // else if (flowerIndex == 1) {
+              //   state().flowersRealTimeColors[flowerIndex][channelIndex][sampleIndex] = signal1LatestColors[channelIndex];
+              // }
             }
           }
         }
@@ -566,6 +653,8 @@ public:
             float sampleAngle = REFRESH_ANGLE + sampleIndex * channelAngleStep;
             float sampleX, sampleY, sampleZ;
             float sampleValue = flowersAllShownValues[flowerIndex][channelIndex][sampleIndex];
+            sampleValue = ((sampleValue / 1000.0f) - 0.5f) * 2.0;
+
             float oscillationAmp = CHANNEL_DISTANCE;
             
 
@@ -764,7 +853,12 @@ public:
     case '=':
       navi = !navi;
       break;
+    case 'P':
+      debugPrint = !debugPrint;
+      printf("[EEG] debug print %s\n", debugPrint ? "ON" : "OFF");
+      break;
     }
+    
     return true;
   }
 
@@ -815,4 +909,5 @@ int main()
   app.start();
   return 0;
 }
+
 
