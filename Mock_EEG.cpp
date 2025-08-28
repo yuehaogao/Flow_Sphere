@@ -1,4 +1,6 @@
-// Mock_EEG.cpp — single-file, header-free version
+// Mock_EEG.cpp - 0827
+
+// — single-file, header-free version
 // Drop-in: include this file directly from Flow_Sphere.cpp:
 //     #include "Mock_EEG.cpp"
 //
