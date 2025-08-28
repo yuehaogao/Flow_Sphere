@@ -1,3 +1,5 @@
+# Read Mindmonitor 0820 - Yuehao Gao
+
 from datetime import datetime
 from pythonosc import dispatcher, osc_server, udp_client
 import matplotlib.pyplot as plt
