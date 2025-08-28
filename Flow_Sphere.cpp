@@ -1,12 +1,7 @@
-// FLOW_SPHERE.CPP 老 2025-08-20-1622 使用constructor
 
-
-
-// Yuehao Gao, 2025
+// Yuehao Gao, 2025 - 0820
 // Designed based on Myungin Lee(2022) Sine Envelope with Visuals
-
 // https://www.media.mit.edu/projects/flower-eeg-visualization-with-the-aid-of-machine-learning/overview/
-
 
 
 /*
@@ -64,10 +59,10 @@
 #include <fstream>
 #include <time.h> 
 
-// #include "Mock_EEG.hpp"      
+//#include "al/app/al_App.hpp"
+
 #include "Mock_EEG.cpp" 
 
-//#include "al/app/al_App.hpp"
 #include "al/app/al_DistributedApp.hpp"
 #include "al/app/al_GUIDomain.hpp"
 #include "al_ext/statedistribution/al_CuttleboneDomain.hpp"
@@ -87,8 +82,6 @@
 #include "Gamma/rnd.h"
 
 using namespace gam;
-
-
 using namespace al;
 using namespace std;
 
@@ -97,7 +90,6 @@ using namespace std;
 
 const int NUM_FLOWERS = 1;                        // How many flowers are there, meaning how many participants are observed
 const int NUM_CHANNELS = 4;                      // How many EEG channels are there for one participant
-// const int NUM_SHADOWS = 8;                        // How many lines (hot and shadows) are there for each channel
 const int WAVE_BUFFER_LENGTH = 600;               // The length of the buffer storing the wave values
 const float DENSITY = 0.2;                        // How dense the samples are on each channel
 const float MIN_FREQUENCY = 4.0;                  // Lower limit of EEG frequency range
@@ -125,7 +117,7 @@ const float CENTRAL_LOWER_BETTA = 16.0;           // As "lower Betta waves" are 
                                                   // Frequencies 12-20Hz are considered "music-induced flow"
 
 
-// const float INTERVAL = 1.0 / 60.0; // 1/60 second
+
 
 
 // This example shows how to use SynthVoice and SynthManagerto create an audio
@@ -145,10 +137,8 @@ public:
   Mesh mMesh;
   double a;
   double b;
-  //double spin = al::rnd::uniformS();
 
   double spin = gam::rnd::uniS(1.0);
-
 
   double timepose = 0;
   Vec3f note_position;
@@ -308,6 +298,16 @@ public:
       exit(1);
     }
 
+    // Display the introduction of key control
+    printf("------------------------------------------------------------ \n");
+    printf("------------------------------------------------------------ \n");
+    printf("Press '=' to switch between navigation mode & MIDI Mode \n");
+    printf("Press '[' to turn on & off GUI \n");
+    printf("Press ']' to turn on & off Spectrum \n");
+    printf("Press 'p' to turn on & off EEG data display \n");
+    printf("Press 'o' to switch between streaming mode & reading mode \n");
+    printf("------------------------------------------------------------ \n");
+    printf("------------------------------------------------------------ \n");
 
     // Set up the parameters for the oval
     frameCount = 0;
@@ -325,9 +325,6 @@ public:
     for (int flowerIndex = 0; flowerIndex < NUM_FLOWERS; flowerIndex++) {
       vector<float> oneFlowerLatestValues;
       vector<vector<float>> oneFlowerAllShownValues;
-
-      //vector<float> oneFlowerLatestFrequencies;
-      //vector<HSV> oneFlowerLatestColors;
 
       // ****** FOR EACH EEG CHANNEL IN A FLOWER: ******
       for (int channelIndex = 0; channelIndex < NUM_CHANNELS; channelIndex++) {
@@ -417,7 +414,6 @@ public:
       nav().pos(0.0, 0.0, 0.0);
       nav().faceToward(0.0, 0.0, 0.0);
     }
-    
   }
 
 
@@ -582,6 +578,7 @@ public:
 
         // 归一 & sqrt 压缩，让强信号更亮
         float brightness = std::sqrt(std::max(0.0f, score / total));
+        brightness *= 3.33f;
 
         // 色相：alpha 偏蓝青(≈0.55)，theta 偏蓝紫(≈0.62)
         float a_ratio = alpha / (alpha + theta + eps);
@@ -595,7 +592,7 @@ public:
 
         float saturation = 1.0f;
         signal0LatestColors.emplace_back(hue, saturation,
-                                         std::max(0.2f, std::min(1.0f, brightness)));
+                                         std::max(0.35f, std::min(1.0f, brightness)));
       }
 
 
@@ -637,7 +634,6 @@ public:
                 channelValues[sampleIndex] = signal0LatestValues[channelIndex];
               } 
               // else if (flowerIndex == 1) {
-                
               //   channelValues[sampleIndex] = signal1LatestValues[channelIndex];
               // }
             }
@@ -653,7 +649,7 @@ public:
             float sampleAngle = REFRESH_ANGLE + sampleIndex * channelAngleStep;
             float sampleX, sampleY, sampleZ;
             float sampleValue = flowersAllShownValues[flowerIndex][channelIndex][sampleIndex];
-            sampleValue = ((sampleValue / 1000.0f) - 0.5f) * 2.0;
+            sampleValue = ((sampleValue / 1000.0f) - 0.5f) * 3.0;
 
             float oscillationAmp = CHANNEL_DISTANCE;
             
@@ -852,10 +848,22 @@ public:
       break;
     case '=':
       navi = !navi;
+      if (navi) {
+        printf("Nagivation Mode, MIDI Disabled");
+      } else {
+        printf("MIDI Mode, Navigation Disabled");
+      }
       break;
-    case 'P':
+    case 'p':
       debugPrint = !debugPrint;
-      printf("[EEG] debug print %s\n", debugPrint ? "ON" : "OFF");
+      if (debugPrint) {
+        printf("Data Showing Mode On");
+      } else {
+        printf("Data Showing Mode Off");
+      }
+      break;
+    case 'd':
+      
       break;
     }
     
